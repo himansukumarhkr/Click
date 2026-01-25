@@ -3,4 +3,6 @@ max_size: 0
 save_dir: C:\Users\himan\Desktop\Evidence
 log_title: False
 append_num: False
-auto_copy: True
+auto_copy: False
+copy_files: True
+copy_image: True

@@ -5,7 +5,7 @@ from docx.shared import Inches
 import os
 import datetime
 import tkinter as tk
-from tkinter import filedialog
+from tkinter import filedialog, ttk
 import threading
 import ctypes
 from ctypes import wintypes
@@ -15,6 +15,7 @@ import queue
 import time
 import io
 
+# --- CTYPES DEFINITIONS ---
 kernel32 = ctypes.windll.kernel32
 user32 = ctypes.windll.user32
 
@@ -26,12 +27,10 @@ UINT = wintypes.UINT
 HANDLE = wintypes.HANDLE
 HWND = wintypes.HWND
 
-# GlobalAlloc Flags
 GMEM_FIXED = 0x0000
 GMEM_ZEROINIT = 0x0040
 GPTR = GMEM_FIXED | GMEM_ZEROINIT
 
-# Function Signatures
 kernel32.GlobalAlloc.argtypes = [UINT, SIZE_T]
 kernel32.GlobalAlloc.restype = HGLOBAL
 
@@ -56,7 +55,6 @@ user32.SetClipboardData.restype = HANDLE
 user32.CloseClipboard.argtypes = []
 user32.CloseClipboard.restype = BOOL
 
-# Structures
 class POINT(ctypes.Structure):
     _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
 
@@ -79,6 +77,8 @@ class ScreenshotSession:
         self.log_window_titles = False
         self.append_sequence_number = True
         self.auto_copy_clipboard = False
+        self.copy_files_option = True
+        self.copy_image_option = True
         self.running = False
         self.save_directory = ""
         self.image_paths = []
@@ -134,8 +134,7 @@ class ScreenshotSession:
             self.image_paths.append(img_path)
 
             if self.auto_copy_clipboard:
-                # Copy ALL files accumulated so far, plus the current image for preview
-                self.copy_dual_to_clipboard(img, self.image_paths)
+                self.copy_dual_to_clipboard(img, [img_path])
 
             if os.path.exists(self.current_filename):
                 try:
@@ -298,105 +297,109 @@ class ScreenshotSession:
         self.last_known_size_str = self.get_formatted_size(self.current_filename)
 
     def copy_dual_to_clipboard(self, img, filepaths):
+        if not self.copy_files_option and not self.copy_image_option:
+            return False
+
         try:
-            # 1. Prepare DIB (Bitmap)
-            output = io.BytesIO()
-            img.convert("RGB").save(output, "BMP")
-            dib_data = output.getvalue()[14:] # Skip 14-byte BMP header
-            output.close()
-            dib_len = len(dib_data)
-            
-            h_dib = kernel32.GlobalAlloc(GPTR, dib_len)
-            if not h_dib: return False
-            
-            ptr_dib = kernel32.GlobalLock(h_dib)
-            ctypes.memmove(ptr_dib, dib_data, dib_len)
-            kernel32.GlobalUnlock(h_dib)
+            h_dib = None
+            h_drop = None
 
-            # 2. Prepare DropFiles (File List)
-            if isinstance(filepaths, str):
-                filepaths = [filepaths]
-            
-            # Create double-null terminated string of all paths
-            files_text = "\0".join([os.path.abspath(p) for p in filepaths]) + "\0\0"
-            files_data = files_text.encode('utf-16le')
-            
-            # Calculate size for DROPFILES struct + file data
-            drop_len = ctypes.sizeof(DROPFILES) + len(files_data)
-            
-            h_drop = kernel32.GlobalAlloc(GPTR, drop_len)
-            if not h_drop:
-                kernel32.GlobalFree(h_dib)
-                return False
+            if self.copy_image_option and img:
+                output = io.BytesIO()
+                img.convert("RGB").save(output, "BMP")
+                dib_data = output.getvalue()[14:]
+                output.close()
+                dib_len = len(dib_data)
                 
-            ptr_drop = kernel32.GlobalLock(h_drop)
-            
-            # Initialize DROPFILES struct manually in memory
-            # pFiles = offset to file list (size of struct)
-            # pt = 0,0
-            # fNC = False
-            # fWide = True
-            
-            # We need to write the struct fields to the memory block
-            # DROPFILES layout:
-            # DWORD pFiles;
-            # POINT pt;
-            # BOOL fNC;
-            # BOOL fWide;
-            
-            struct_size = ctypes.sizeof(DROPFILES)
-            
-            # Cast pointer to allow writing
-            # We use memmove to copy a pre-built struct bytes
-            df = DROPFILES()
-            df.pFiles = struct_size
-            df.pt = POINT(0, 0)
-            df.fNC = False
-            df.fWide = True
-            
-            ctypes.memmove(ptr_drop, ctypes.byref(df), struct_size)
-            
-            # Copy file data immediately after struct
-            # ptr_drop is a void pointer (int), so we add offset
-            # We must cast to c_void_p to get the address as int for arithmetic if needed, 
-            # but since we defined restype as c_void_p (int), we can do math directly? 
-            # No, c_void_p is an object. We need its value.
-            
-            ptr_addr = ptr_drop if isinstance(ptr_drop, int) else ptr_drop.value if ptr_drop else 0
-            
-            if ptr_addr:
-                ctypes.memmove(ptr_addr + struct_size, files_data, len(files_data))
-                kernel32.GlobalUnlock(h_drop)
+                h_dib = kernel32.GlobalAlloc(GPTR, dib_len)
+                if h_dib:
+                    ptr_dib = kernel32.GlobalLock(h_dib)
+                    ctypes.memmove(ptr_dib, dib_data, dib_len)
+                    kernel32.GlobalUnlock(h_dib)
 
-                for _ in range(10):
-                    if user32.OpenClipboard(None):
-                        try:
-                            user32.EmptyClipboard()
-                            user32.SetClipboardData(8, h_dib)      # CF_DIB
-                            user32.SetClipboardData(15, h_drop)    # CF_HDROP
-                        finally:
-                            user32.CloseClipboard()
-                        return True
-                    time.sleep(0.01)
-            else:
-                print("GlobalLock returned NULL")
-                kernel32.GlobalFree(h_dib)
-                kernel32.GlobalFree(h_drop)
+            if self.copy_files_option and filepaths:
+                if isinstance(filepaths, str):
+                    filepaths = [filepaths]
                 
+                files_text = "\0".join([os.path.abspath(p) for p in filepaths]) + "\0\0"
+                files_data = files_text.encode('utf-16le')
+                
+                pDropFiles = DROPFILES()
+                pDropFiles.pFiles = ctypes.sizeof(DROPFILES)
+                pDropFiles.pt = POINT(0, 0)
+                pDropFiles.fNC = False
+                pDropFiles.fWide = True
+                
+                drop_len = ctypes.sizeof(DROPFILES) + len(files_data)
+                h_drop = kernel32.GlobalAlloc(GPTR, drop_len)
+                if h_drop:
+                    ptr_drop = kernel32.GlobalLock(h_drop)
+                    ptr_addr = ptr_drop if isinstance(ptr_drop, int) else ptr_drop.value if ptr_drop else 0
+                    
+                    if ptr_addr:
+                        ctypes.memmove(ptr_drop, ctypes.byref(pDropFiles), ctypes.sizeof(DROPFILES))
+                        ctypes.memmove(ptr_addr + ctypes.sizeof(DROPFILES), files_data, len(files_data))
+                        kernel32.GlobalUnlock(h_drop)
+                    else:
+                        kernel32.GlobalFree(h_drop)
+                        h_drop = None
+
+            success = False
+            for _ in range(10):
+                if user32.OpenClipboard(None):
+                    try:
+                        user32.EmptyClipboard()
+                        if h_dib:
+                            user32.SetClipboardData(8, h_dib)
+                        if h_drop:
+                            user32.SetClipboardData(15, h_drop)
+                        success = True
+                    finally:
+                        user32.CloseClipboard()
+                    break
+                time.sleep(0.01)
+            
+            if not success:
+                if h_dib: kernel32.GlobalFree(h_dib)
+                if h_drop: kernel32.GlobalFree(h_drop)
+                
+            return success
         except Exception as e:
             print(f"Dual Copy Error: {e}")
-        return False
+            return False
 
     def manual_copy_all(self):
         if not self.image_paths: return False
+        
+        total = len(self.image_paths)
+        if self.gui_callback:
+            self.gui_callback("PROGRESS_START", total)
+            
         try:
-            # Use the last image as the visual representative for Win+V
+            if self.copy_image_option:
+                for i, path in enumerate(self.image_paths[:-1]):
+                    if os.path.exists(path):
+                        with Image.open(path) as img:
+                            img.load()
+                            self.copy_dual_to_clipboard(img.copy(), [path])
+                            if self.gui_callback:
+                                self.gui_callback("PROGRESS_UPDATE", i + 1)
+                            time.sleep(1.0)
+
             last_img_path = self.image_paths[-1]
             if os.path.exists(last_img_path):
-                img = Image.open(last_img_path)
-                return self.copy_dual_to_clipboard(img, self.image_paths)
+                with Image.open(last_img_path) as img:
+                    img.load()
+                    result = self.copy_dual_to_clipboard(img.copy(), self.image_paths)
+                    if self.gui_callback:
+                        self.gui_callback("PROGRESS_UPDATE", total)
+                        self.gui_callback("PROGRESS_DONE", result, total)
+                    return result
+                    
         except Exception as e:
             print(f"Manual Copy Error: {e}")
+            if self.gui_callback:
+                self.gui_callback("PROGRESS_DONE", False, 0)
         return False
 
     def take_screenshot(self):
@@ -414,8 +417,24 @@ class ScreenshotSession:
         if self.gui_callback:
             self.gui_callback("NOTIFY", count, self.last_known_size_str)
 
+        if self.auto_copy_clipboard:
+            if not self.temp_dir or not os.path.exists(self.temp_dir):
+                self.temp_dir = tempfile.mkdtemp(prefix="ScreenshotTool_")
+            
+            img_filename = f"screenshot_{count}.jpg"
+            img_path = os.path.join(self.temp_dir, img_filename)
+            
+            threading.Thread(target=self._clipboard_worker, args=(img, img_path), daemon=True).start()
+        
         window_title = self.get_cleaned_window_title() if self.log_window_titles else None
         self.save_queue.put((img, count, window_title))
+
+    def _clipboard_worker(self, img, img_path):
+        try:
+            img.convert("RGB").save(img_path, "JPEG", quality=90)
+            self.copy_dual_to_clipboard(img, [img_path])
+        except Exception as e:
+            print(f"Clipboard Worker Error: {e}")
 
     def undo_last_screenshot(self):
         if not self.current_filename or not self.running: return
@@ -469,18 +488,20 @@ class MainWindow:
             "warning": "#F57F17"
         }
 
+        ctypes.windll.kernel32.GlobalLock.argtypes = [wintypes.HGLOBAL]
+        ctypes.windll.kernel32.GlobalLock.restype = ctypes.c_void_p
+
         self.root = tk.Tk()
         self.root.title("Screenshot Tool")
-        self.root.geometry("550x580")
+        self.root.geometry("550x620")
         self.root.configure(bg=self.colors["bg"])
 
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
         x = (screen_width / 2) - (550 / 2)
-        y = (screen_height / 2) - (580 / 2)
-        self.root.geometry(f"550x580+{int(x)}+{int(y)}")
+        y = (screen_height / 2) - (620 / 2)
+        self.root.geometry(f"550x620+{int(x)}+{int(y)}")
 
-        # Notification Window
         self.notif_window = tk.Toplevel(self.root)
         self.notif_window.withdraw()
         self.notif_window.overrideredirect(True)
@@ -502,7 +523,6 @@ class MainWindow:
         
         self.hide_timer = None
 
-        # Main UI
         main_frame = tk.Frame(self.root, bg=self.colors["bg"], padx=30, pady=20)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
@@ -534,9 +554,22 @@ class MainWindow:
         self.chk_num = self.create_checkbox(main_frame, "Append Screenshot Number", self.var_append_num)
 
         self.var_auto_copy = tk.BooleanVar(value=False)
-        self.chk_copy = self.create_checkbox(main_frame, "Auto-copy to Clipboard", self.var_auto_copy)
+        self.chk_auto_copy = self.create_checkbox(main_frame, "Auto-copy to Clipboard", self.var_auto_copy)
 
-        # Status & Size Info
+        self.var_copy_files = tk.BooleanVar(value=True)
+        frame_cb1 = tk.Frame(main_frame, bg=self.colors["bg"])
+        frame_cb1.pack(fill=tk.X, pady=1)
+        self.chk_copy_files = self.create_checkbox(frame_cb1, "Include Files", self.var_copy_files, pack=False)
+        self.chk_copy_files.pack(side=tk.LEFT)
+        tk.Label(frame_cb1, text="(Paste in Explorer/Email)", fg="gray", bg=self.colors["bg"], font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=5)
+        
+        self.var_copy_image = tk.BooleanVar(value=True)
+        frame_cb2 = tk.Frame(main_frame, bg=self.colors["bg"])
+        frame_cb2.pack(fill=tk.X, pady=1)
+        self.chk_copy_image = self.create_checkbox(frame_cb2, "Include Image", self.var_copy_image, pack=False)
+        self.chk_copy_image.pack(side=tk.LEFT)
+        tk.Label(frame_cb2, text="(Visible in Win+V History)", fg="gray", bg=self.colors["bg"], font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=5)
+
         info_frame = tk.Frame(main_frame, bg=self.colors["bg"])
         info_frame.pack(fill=tk.X, pady=(15, 5))
         
@@ -557,7 +590,6 @@ class MainWindow:
         self.btn_start.pack(fill=tk.X, pady=(5, 5))
         self.btn_start.configure(font=("Segoe UI", 10, "bold"))
 
-        # Action Buttons Frame
         action_frame = tk.Frame(main_frame, bg=self.colors["bg"])
         action_frame.pack(fill=tk.X, pady=5)
 
@@ -570,6 +602,11 @@ class MainWindow:
                                            bg=self.colors["btn_bg"], fg=self.colors["btn_fg"], height=2)
         self.btn_copy.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(5, 0))
         self.btn_copy.configure(font=("Segoe UI", 9, "bold"))
+
+        self.progress_var = tk.DoubleVar()
+        self.progress_bar = ttk.Progressbar(main_frame, variable=self.progress_var, maximum=100)
+        self.progress_bar.pack(fill=tk.X, pady=(10, 0))
+        self.progress_bar.pack_forget()
 
         self.load_settings()
         
@@ -597,13 +634,14 @@ class MainWindow:
                         width=width, height=height, cursor="hand2")
         return btn
 
-    def create_checkbox(self, parent, text, variable):
+    def create_checkbox(self, parent, text, variable, pack=True):
         chk = tk.Checkbutton(parent, text=text, variable=variable,
                              bg=self.colors["bg"], fg=self.colors["fg"],
                              selectcolor=self.colors["input_bg"],
                              activebackground=self.colors["bg"], activeforeground=self.colors["fg"],
                              font=("Segoe UI", 9))
-        chk.pack(anchor="w", pady=1)
+        if pack:
+            chk.pack(anchor="w", pady=1)
         return chk
 
     def browse_directory(self):
@@ -624,6 +662,8 @@ class MainWindow:
         self.var_log_title.set(data.get("log_title", False))
         self.var_append_num.set(data.get("append_num", True))
         self.var_auto_copy.set(data.get("auto_copy", False))
+        self.var_copy_files.set(data.get("copy_files", True))
+        self.var_copy_image.set(data.get("copy_image", True))
 
     def save_settings(self):
         data = {
@@ -632,7 +672,9 @@ class MainWindow:
             "save_dir": self.entry_dir.get(),
             "log_title": self.var_log_title.get(),
             "append_num": self.var_append_num.get(),
-            "auto_copy": self.var_auto_copy.get()
+            "auto_copy": self.var_auto_copy.get(),
+            "copy_files": self.var_copy_files.get(),
+            "copy_image": self.var_copy_image.get()
         }
         ToonConfig.save(self.config_file, data)
 
@@ -653,7 +695,6 @@ class MainWindow:
                 elif action == "UPDATE_SIZE":
                     size_str = args[1]
                     self.size_label.config(text=f"Size: {size_str}")
-                    # Only update popup if it's currently visible
                     if self.notif_window.state() == "normal":
                         self.lbl_notif_info.config(text=f"{size_str}")
                 
@@ -667,6 +708,27 @@ class MainWindow:
                     title, msg = args[1], args[2]
                     self.show_notification(f"⚠ {title}", msg)
                     self.status_label.config(text=f"⚠ {title}", fg=self.colors["error"])
+                
+                elif action == "PROGRESS_START":
+                    total = args[1]
+                    self.progress_bar.config(maximum=total, value=0)
+                    self.progress_bar.pack(fill=tk.X, pady=(10, 0))
+                    self.status_label.config(text="Copying to Clipboard...", fg=self.colors["accent"])
+                    self.btn_copy.config(state='disabled')
+                
+                elif action == "PROGRESS_UPDATE":
+                    val = args[1]
+                    self.progress_var.set(val)
+                
+                elif action == "PROGRESS_DONE":
+                    success = args[1]
+                    total = args[2] if len(args) > 2 else 0
+                    self.progress_bar.pack_forget()
+                    self.btn_copy.config(state='normal')
+                    if success:
+                        self.status_label.config(text=f"Copied {total} images!", fg=self.colors["success"])
+                    else:
+                        self.status_label.config(text="Copy Failed", fg=self.colors["error"])
                     
         except queue.Empty:
             pass
@@ -734,6 +796,8 @@ class MainWindow:
         self.session.log_window_titles = self.var_log_title.get()
         self.session.append_sequence_number = self.var_append_num.get()
         self.session.auto_copy_clipboard = self.var_auto_copy.get()
+        self.session.copy_files_option = self.var_copy_files.get()
+        self.session.copy_image_option = self.var_copy_image.get()
         self.session.running = True
         
         self.session.start_worker()
@@ -750,7 +814,9 @@ class MainWindow:
         self.btn_browse.config(state='disabled')
         self.chk_title.config(state='disabled')
         self.chk_num.config(state='disabled')
-        self.chk_copy.config(state='disabled')
+        self.chk_auto_copy.config(state='disabled')
+        self.chk_copy_files.config(state='disabled')
+        self.chk_copy_image.config(state='disabled')
         
         display_path = f".../{date_str}/{os.path.basename(self.session.current_filename)}"
         self.status_label.config(text=f"Active | {display_path}", fg=self.colors["success"])
@@ -767,7 +833,6 @@ class MainWindow:
         self.session.running = False
         keyboard.unhook_all_hotkeys()
         
-        # Non-blocking wait for queue
         def wait_for_queue():
             if not self.session.save_queue.empty():
                 self.status_label.config(text="Saving pending screenshots...", fg=self.colors["warning"])
@@ -786,7 +851,9 @@ class MainWindow:
         self.btn_browse.config(state='normal')
         self.chk_title.config(state='normal')
         self.chk_num.config(state='normal')
-        self.chk_copy.config(state='normal')
+        self.chk_auto_copy.config(state='normal')
+        self.chk_copy_files.config(state='normal')
+        self.chk_copy_image.config(state='normal')
         self.status_label.config(text="Session Stopped", fg=self.colors["warning"])
         print("\n[OK] Session Stopped.")
 
@@ -806,12 +873,8 @@ class MainWindow:
         if not self.session.image_paths:
             self.status_label.config(text="No images to copy!", fg=self.colors["warning"])
             return
-        success = self.session.manual_copy_all()
-        if success:
-            count = len(self.session.image_paths)
-            self.status_label.config(text=f"Copied {count} images to clipboard!", fg=self.colors["success"])
-        else:
-            self.status_label.config(text="Failed to copy images.", fg=self.colors["error"])
+        
+        threading.Thread(target=self.session.manual_copy_all, daemon=True).start()
 
     def on_close(self):
         self.save_settings()
@@ -824,7 +887,13 @@ class MainWindow:
 def main():
     session = ScreenshotSession()
     app = MainWindow(session)
-    app.root.mainloop()
+    try:
+        app.root.mainloop()
+    except KeyboardInterrupt:
+        print("\nProgram interrupted by user.")
+        if session.running:
+            session.running = False
+            session.cleanup_temp()
 
 
 if __name__ == "__main__":
