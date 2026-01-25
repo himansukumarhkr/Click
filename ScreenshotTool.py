@@ -54,8 +54,10 @@ user32.SetClipboardData.restype = HANDLE
 user32.CloseClipboard.argtypes = []
 user32.CloseClipboard.restype = BOOL
 
+
 class POINT(ctypes.Structure):
     _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
 
 class DROPFILES(ctypes.Structure):
     _fields_ = [
@@ -64,6 +66,7 @@ class DROPFILES(ctypes.Structure):
         ("fNC", wintypes.BOOL),
         ("fWide", wintypes.BOOL),
     ]
+
 
 class ScreenshotSession:
     def __init__(self):
@@ -83,7 +86,7 @@ class ScreenshotSession:
         self.image_paths = []
         self.temp_dir = None
         self.doc = None
-        
+
         # Threading & Queues
         self.save_queue = queue.Queue()
         self.gui_callback = None
@@ -108,15 +111,15 @@ class ScreenshotSession:
                     if not self.running and self.save_queue.empty():
                         break
                     continue
-                
+
                 if task is None: break
-                
+
                 if task[0] == "UNDO":
                     self._process_undo()
                 else:
                     img, count, window_title = task
                     self._process_save(img, count, window_title)
-                
+
                 self.save_queue.task_done()
             except Exception as e:
                 print(f"Worker Error: {e}")
@@ -128,7 +131,7 @@ class ScreenshotSession:
 
             img_filename = f"screenshot_{count}.jpg"
             img_path = os.path.join(self.temp_dir, img_filename)
-            
+
             img.save(img_path, "JPEG", quality=90)
             self.image_paths.append(img_path)
 
@@ -141,7 +144,8 @@ class ScreenshotSession:
                     img_size = os.path.getsize(img_path)
                     if self.max_size_bytes > 0 and (current_size + img_size + 10240) > self.max_size_bytes:
                         self._rotate_file()
-                except OSError: pass
+                except OSError:
+                    pass
 
             if self.doc is None:
                 self.initialize_document()
@@ -151,13 +155,13 @@ class ScreenshotSession:
                 text_parts.append(window_title)
             if self.append_sequence_number:
                 text_parts.append(str(count))
-            
+
             if text_parts:
                 self.doc.add_paragraph(" ".join(text_parts))
 
             self.doc.add_picture(img_path, width=Inches(6))
             self.doc.add_paragraph("-" * 50)
-            
+
             try:
                 self.doc.save(self.current_filename)
                 self.last_known_size_str = self.get_formatted_size(self.current_filename)
@@ -169,7 +173,7 @@ class ScreenshotSession:
                     if self.gui_callback:
                         self.gui_callback("WARNING", "File Open in Word!", "Close to save")
                     self.file_locked_warning_shown = True
-            
+
         except Exception as e:
             print(f"Save Error: {e}")
 
@@ -179,8 +183,10 @@ class ScreenshotSession:
             if self.image_paths:
                 last_img = self.image_paths.pop()
                 if os.path.exists(last_img):
-                    try: os.remove(last_img)
-                    except OSError: pass
+                    try:
+                        os.remove(last_img)
+                    except OSError:
+                        pass
 
             if self.doc and len(self.doc.paragraphs) >= 2:
                 try:
@@ -193,7 +199,8 @@ class ScreenshotSession:
                         last_p = self.doc.paragraphs[-1]
                         if last_p.text != "-" * 50 and not last_p.text.startswith("Screenshot Log"):
                             last_p._element.getparent().remove(last_p._element)
-                except Exception: pass
+                except Exception:
+                    pass
 
                 try:
                     self.doc.save(self.current_filename)
@@ -201,7 +208,7 @@ class ScreenshotSession:
                     if self.gui_callback:
                         self.gui_callback("UNDO", self.session_count, self.last_known_size_str)
                 except PermissionError:
-                     if self.gui_callback:
+                    if self.gui_callback:
                         self.gui_callback("WARNING", "File Open in Word!", "Undo in memory only")
 
             self.session_count -= 1
@@ -217,17 +224,20 @@ class ScreenshotSession:
             part2_name = f"{self.base_name_no_ext}_Part2.docx"
             try:
                 os.rename(self.current_filename, part1_name)
-            except OSError: pass
+            except OSError:
+                pass
             self.current_filename = part2_name
             self.current_part = 2
         else:
             self.current_part += 1
             self.current_filename = f"{self.base_name_no_ext}_Part{self.current_part}.docx"
-        
+
         self.doc = Document()
         self.doc.add_heading(f'Screenshot Log - Part {self.current_part}', 0)
-        try: self.doc.save(self.current_filename)
-        except PermissionError: pass
+        try:
+            self.doc.save(self.current_filename)
+        except PermissionError:
+            pass
         self.last_known_size_str = self.get_formatted_size(self.current_filename)
 
     def force_rotate(self):
@@ -252,9 +262,9 @@ class ScreenshotSession:
             user32.GetWindowTextW(hwnd, buff, length + 1)
             full_title = buff.value
 
-            clean_title = full_title.replace(" - Google Chrome", "")\
-                                    .replace(" - Microsoft Edge", "")\
-                                    .replace(" - Mozilla Firefox", "")
+            clean_title = full_title.replace(" - Google Chrome", "") \
+                .replace(" - Microsoft Edge", "") \
+                .replace(" - Mozilla Firefox", "")
             return clean_title
         except Exception:
             return "Unknown Window"
@@ -282,17 +292,21 @@ class ScreenshotSession:
 
     def initialize_document(self):
         if os.path.exists(self.current_filename):
-            try: self.doc = Document(self.current_filename)
-            except Exception: self.doc = Document()
+            try:
+                self.doc = Document(self.current_filename)
+            except Exception:
+                self.doc = Document()
         else:
             self.doc = Document()
             if self.current_part > 1:
                 self.doc.add_heading(f'Screenshot Log - Part {self.current_part}', 0)
             else:
                 self.doc.add_heading('Screenshot Log', 0)
-            try: self.doc.save(self.current_filename)
-            except PermissionError: pass
-        
+            try:
+                self.doc.save(self.current_filename)
+            except PermissionError:
+                pass
+
         self.last_known_size_str = self.get_formatted_size(self.current_filename)
 
     def copy_dual_to_clipboard(self, img, filepaths):
@@ -309,7 +323,7 @@ class ScreenshotSession:
                 dib_data = output.getvalue()[14:]
                 output.close()
                 dib_len = len(dib_data)
-                
+
                 h_dib = kernel32.GlobalAlloc(GPTR, dib_len)
                 if h_dib:
                     ptr_dib = kernel32.GlobalLock(h_dib)
@@ -319,22 +333,22 @@ class ScreenshotSession:
             if self.copy_files_option and filepaths:
                 if isinstance(filepaths, str):
                     filepaths = [filepaths]
-                
+
                 files_text = "\0".join([os.path.abspath(p) for p in filepaths]) + "\0\0"
                 files_data = files_text.encode('utf-16le')
-                
+
                 pDropFiles = DROPFILES()
                 pDropFiles.pFiles = ctypes.sizeof(DROPFILES)
                 pDropFiles.pt = POINT(0, 0)
                 pDropFiles.fNC = False
                 pDropFiles.fWide = True
-                
+
                 drop_len = ctypes.sizeof(DROPFILES) + len(files_data)
                 h_drop = kernel32.GlobalAlloc(GPTR, drop_len)
                 if h_drop:
                     ptr_drop = kernel32.GlobalLock(h_drop)
                     ptr_addr = ptr_drop if isinstance(ptr_drop, int) else ptr_drop.value if ptr_drop else 0
-                    
+
                     if ptr_addr:
                         ctypes.memmove(ptr_drop, ctypes.byref(pDropFiles), ctypes.sizeof(DROPFILES))
                         ctypes.memmove(ptr_addr + ctypes.sizeof(DROPFILES), files_data, len(files_data))
@@ -357,11 +371,11 @@ class ScreenshotSession:
                         user32.CloseClipboard()
                     break
                 time.sleep(0.01)
-            
+
             if not success:
                 if h_dib: kernel32.GlobalFree(h_dib)
                 if h_drop: kernel32.GlobalFree(h_drop)
-                
+
             return success
         except Exception as e:
             print(f"Dual Copy Error: {e}")
@@ -369,11 +383,11 @@ class ScreenshotSession:
 
     def manual_copy_all(self):
         if not self.image_paths: return False
-        
+
         total = len(self.image_paths)
         if self.gui_callback:
             self.gui_callback("PROGRESS_START", total)
-            
+
         try:
             if self.copy_image_option:
                 for i, path in enumerate(self.image_paths[:-1]):
@@ -394,7 +408,7 @@ class ScreenshotSession:
                         self.gui_callback("PROGRESS_UPDATE", total)
                         self.gui_callback("PROGRESS_DONE", result, total)
                     return result
-                    
+
         except Exception as e:
             print(f"Manual Copy Error: {e}")
             if self.gui_callback:
@@ -403,7 +417,7 @@ class ScreenshotSession:
 
     def take_screenshot(self):
         if not self.current_filename or not self.running: return
-        
+
         try:
             img = ImageGrab.grab()
         except Exception as e:
@@ -412,19 +426,19 @@ class ScreenshotSession:
 
         self.session_count += 1
         count = self.session_count
-        
+
         if self.gui_callback:
             self.gui_callback("NOTIFY", count, self.last_known_size_str)
 
         if self.auto_copy_clipboard:
             if not self.temp_dir or not os.path.exists(self.temp_dir):
                 self.temp_dir = tempfile.mkdtemp(prefix="ScreenshotTool_")
-            
+
             img_filename = f"screenshot_{count}.jpg"
             img_path = os.path.join(self.temp_dir, img_filename)
-            
+
             threading.Thread(target=self._clipboard_worker, args=(img, img_path), daemon=True).start()
-        
+
         window_title = self.get_cleaned_window_title() if self.log_window_titles else None
         self.save_queue.put((img, count, window_title))
 
@@ -439,6 +453,7 @@ class ScreenshotSession:
         if not self.current_filename or not self.running: return
         self.save_queue.put(("UNDO", None, None))
 
+
 class ToonConfig:
     @staticmethod
     def load(filepath):
@@ -452,8 +467,10 @@ class ToonConfig:
                     if ':' in line:
                         key, value = line.split(':', 1)
                         key, value = key.strip(), value.strip()
-                        if value.lower() == 'true': value = True
-                        elif value.lower() == 'false': value = False
+                        if value.lower() == 'true':
+                            value = True
+                        elif value.lower() == 'false':
+                            value = False
                         config[key] = value
         except Exception as e:
             print(f"Error loading TOON config: {e}")
@@ -474,7 +491,7 @@ class MainWindow:
         self.session = session
         self.config_file = "config.toon"
         self.gui_queue = queue.Queue()
-        
+
         self.colors = {
             "bg": "#F5F5F5", "fg": "#000000", "accent": "#333333",
             "input_bg": "#FFFFFF", "input_fg": "#000000",
@@ -503,26 +520,26 @@ class MainWindow:
         self.notif_window.overrideredirect(True)
         self.notif_window.attributes("-topmost", True)
         self.notif_window.configure(bg="white")
-        
-        self.notif_frame = tk.Frame(self.notif_window, bg="white", 
+
+        self.notif_frame = tk.Frame(self.notif_window, bg="white",
                                     highlightbackground="#2E7D32", highlightthickness=1)
         self.notif_frame.pack(fill=tk.BOTH, expand=True)
-        
-        self.lbl_notif_title = tk.Label(self.notif_frame, text="", 
-                                        fg="#2E7D32", bg="white", 
+
+        self.lbl_notif_title = tk.Label(self.notif_frame, text="",
+                                        fg="#2E7D32", bg="white",
                                         font=("Segoe UI", 10, "bold"))
         self.lbl_notif_title.pack(pady=(2, 0))
-        
-        self.lbl_notif_info = tk.Label(self.notif_frame, text="", fg="#2E7D32", 
+
+        self.lbl_notif_info = tk.Label(self.notif_frame, text="", fg="#2E7D32",
                                        bg="white", font=("Segoe UI", 8))
         self.lbl_notif_info.pack(pady=(0, 2))
-        
+
         self.hide_timer = None
 
         main_frame = tk.Frame(self.root, bg=self.colors["bg"], padx=30, pady=20)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        tk.Label(main_frame, text="Screenshot Tool", font=("Segoe UI", 18, "bold"), 
+        tk.Label(main_frame, text="Screenshot Tool", font=("Segoe UI", 18, "bold"),
                  bg=self.colors["bg"], fg=self.colors["accent"]).pack(pady=(0, 15))
 
         self.create_label(main_frame, "Document Name")
@@ -536,16 +553,16 @@ class MainWindow:
         self.create_label(main_frame, "Save Directory")
         dir_frame = tk.Frame(main_frame, bg=self.colors["bg"])
         dir_frame.pack(fill=tk.X, pady=(0, 10))
-        
+
         self.entry_dir = self.create_entry(dir_frame, pack=False)
         self.entry_dir.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
-        
+
         self.btn_browse = self.create_button(dir_frame, "Browse", self.browse_directory, width=10)
         self.btn_browse.pack(side=tk.RIGHT)
 
         self.var_log_title = tk.BooleanVar()
         self.chk_title = self.create_checkbox(main_frame, "Log Active Window Title", self.var_log_title)
-        
+
         self.var_append_num = tk.BooleanVar(value=True)
         self.chk_num = self.create_checkbox(main_frame, "Append Screenshot Number", self.var_append_num)
 
@@ -557,31 +574,33 @@ class MainWindow:
         frame_cb1.pack(fill=tk.X, pady=1)
         self.chk_copy_files = self.create_checkbox(frame_cb1, "Include Files", self.var_copy_files, pack=False)
         self.chk_copy_files.pack(side=tk.LEFT)
-        tk.Label(frame_cb1, text="(Paste in Explorer/Email)", fg="gray", bg=self.colors["bg"], font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=5)
-        
+        tk.Label(frame_cb1, text="(Paste in Explorer/Email)", fg="gray", bg=self.colors["bg"],
+                 font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=5)
+
         self.var_copy_image = tk.BooleanVar(value=True)
         frame_cb2 = tk.Frame(main_frame, bg=self.colors["bg"])
         frame_cb2.pack(fill=tk.X, pady=1)
         self.chk_copy_image = self.create_checkbox(frame_cb2, "Include Image", self.var_copy_image, pack=False)
         self.chk_copy_image.pack(side=tk.LEFT)
-        tk.Label(frame_cb2, text="(Visible in Win+V History)", fg="gray", bg=self.colors["bg"], font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=5)
+        tk.Label(frame_cb2, text="(Visible in Win+V History)", fg="gray", bg=self.colors["bg"],
+                 font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=5)
 
         info_frame = tk.Frame(main_frame, bg=self.colors["bg"])
         info_frame.pack(fill=tk.X, pady=(15, 5))
-        
-        self.status_label = tk.Label(info_frame, text="Ready to Start", bg=self.colors["bg"], 
+
+        self.status_label = tk.Label(info_frame, text="Ready to Start", bg=self.colors["bg"],
                                      fg=self.colors["fg"], font=("Segoe UI", 9))
         self.status_label.pack(side=tk.LEFT)
-        
-        self.count_label = tk.Label(info_frame, text="Count: 0", bg=self.colors["bg"], 
-                                   fg=self.colors["accent"], font=("Segoe UI", 9, "bold"))
+
+        self.count_label = tk.Label(info_frame, text="Count: 0", bg=self.colors["bg"],
+                                    fg=self.colors["accent"], font=("Segoe UI", 9, "bold"))
         self.count_label.pack(side=tk.RIGHT, padx=(10, 0))
 
-        self.size_label = tk.Label(info_frame, text="Size: 0 KB", bg=self.colors["bg"], 
+        self.size_label = tk.Label(info_frame, text="Size: 0 KB", bg=self.colors["bg"],
                                    fg=self.colors["accent"], font=("Segoe UI", 9, "bold"))
         self.size_label.pack(side=tk.RIGHT)
 
-        self.btn_start = self.create_button(main_frame, "START SESSION", self.toggle_session, 
+        self.btn_start = self.create_button(main_frame, "START SESSION", self.toggle_session,
                                             bg=self.colors["accent"], fg="#FFFFFF", height=2)
         self.btn_start.pack(fill=tk.X, pady=(5, 5))
         self.btn_start.configure(font=("Segoe UI", 10, "bold"))
@@ -605,7 +624,7 @@ class MainWindow:
         self.progress_bar.pack_forget()
 
         self.load_settings()
-        
+
         self.session.set_callback(self.queue_notification)
         self.check_gui_queue()
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -682,40 +701,40 @@ class MainWindow:
             while True:
                 args = self.gui_queue.get_nowait()
                 action = args[0]
-                
+
                 if action == "NOTIFY":
                     count, size_str = args[1], args[2]
                     self.show_notification(f"✓ #{count}", size_str)
                     self.count_label.config(text=f"Count: {count}")
-                
+
                 elif action == "UPDATE_SIZE":
                     size_str = args[1]
                     self.size_label.config(text=f"Size: {size_str}")
                     if self.notif_window.state() == "normal":
                         self.lbl_notif_info.config(text=f"{size_str}")
-                
+
                 elif action == "UNDO":
                     count, size_str = args[1], args[2]
                     self.show_notification(f"↺ Undone", size_str)
                     self.size_label.config(text=f"Size: {size_str}")
                     self.count_label.config(text=f"Count: {count}")
-                
+
                 elif action == "WARNING":
                     title, msg = args[1], args[2]
                     self.show_notification(f"⚠ {title}", msg)
                     self.status_label.config(text=f"⚠ {title}", fg=self.colors["error"])
-                
+
                 elif action == "PROGRESS_START":
                     total = args[1]
                     self.progress_bar.config(maximum=total, value=0)
                     self.progress_bar.pack(fill=tk.X, pady=(10, 0))
                     self.status_label.config(text="Copying to Clipboard...", fg=self.colors["accent"])
                     self.btn_copy.config(state='disabled')
-                
+
                 elif action == "PROGRESS_UPDATE":
                     val = args[1]
                     self.progress_var.set(val)
-                
+
                 elif action == "PROGRESS_DONE":
                     success = args[1]
                     total = args[2] if len(args) > 2 else 0
@@ -725,7 +744,7 @@ class MainWindow:
                         self.status_label.config(text=f"Copied {total} images!", fg=self.colors["success"])
                     else:
                         self.status_label.config(text="Copy Failed", fg=self.colors["error"])
-                    
+
         except queue.Empty:
             pass
         self.root.after(20, self.check_gui_queue)
@@ -734,14 +753,14 @@ class MainWindow:
         self.lbl_notif_title.config(text=title)
         self.lbl_notif_info.config(text=f"{size_str}")
         self.size_label.config(text=f"Size: {size_str}")
-        
+
         width, height = 150, 45
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
         self.notif_window.geometry(f"{width}x{height}+{screen_width - width - 20}+{screen_height - height - 60}")
-        
+
         self.notif_window.deiconify()
-        
+
         if self.hide_timer:
             self.root.after_cancel(self.hide_timer)
         self.hide_timer = self.root.after(1500, self.notif_window.withdraw)
@@ -755,14 +774,14 @@ class MainWindow:
     def start_app(self):
         self.save_settings()
         self.session.cleanup_temp()
-        
+
         self.session.session_count = 0
         self.session.current_part = 1
         self.session.is_split_mode = False
         self.session.doc = None
         self.session.file_locked_warning_shown = False
         self.session.last_known_size_str = "0 KB"
-        
+
         base_dir = self.entry_dir.get().strip()
         if not base_dir: base_dir = os.path.join(os.path.expanduser("~"), "Desktop", "Evidence")
         date_str = datetime.datetime.now().strftime("%d-%m-%Y")
@@ -795,7 +814,7 @@ class MainWindow:
         self.session.copy_files_option = self.var_copy_files.get()
         self.session.copy_image_option = self.var_copy_image.get()
         self.session.running = True
-        
+
         self.session.start_worker()
         self.session.initialize_document()
 
@@ -813,12 +832,12 @@ class MainWindow:
         self.chk_auto_copy.config(state='disabled')
         self.chk_copy_files.config(state='disabled')
         self.chk_copy_image.config(state='disabled')
-        
+
         display_path = f".../{date_str}/{os.path.basename(self.session.current_filename)}"
         self.status_label.config(text=f"Active | {display_path}", fg=self.colors["success"])
         self.size_label.config(text="Size: 0 KB")
         self.count_label.config(text="Count: 0")
-        
+
         print("\n" + "=" * 40)
         print("      SESSION STARTED")
         print("=" * 40)
@@ -828,14 +847,14 @@ class MainWindow:
     def stop_app(self):
         self.session.running = False
         keyboard.unhook_all_hotkeys()
-        
+
         def wait_for_queue():
             if not self.session.save_queue.empty():
                 self.status_label.config(text="Saving pending screenshots...", fg=self.colors["warning"])
                 self.root.after(100, wait_for_queue)
             else:
                 self.finish_stop()
-        
+
         wait_for_queue()
 
     def finish_stop(self):
@@ -869,7 +888,7 @@ class MainWindow:
         if not self.session.image_paths:
             self.status_label.config(text="No images to copy!", fg=self.colors["warning"])
             return
-        
+
         threading.Thread(target=self.session.manual_copy_all, daemon=True).start()
 
     def on_close(self):
