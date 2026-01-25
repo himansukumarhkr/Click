@@ -15,7 +15,6 @@ import queue
 import time
 import io
 
-# --- CTYPES DEFINITIONS ---
 kernel32 = ctypes.windll.kernel32
 user32 = ctypes.windll.user32
 
@@ -440,8 +439,6 @@ class ScreenshotSession:
         if not self.current_filename or not self.running: return
         self.save_queue.put(("UNDO", None, None))
 
-
-# --- TOON PARSER/WRITER ---
 class ToonConfig:
     @staticmethod
     def load(filepath):
@@ -472,7 +469,6 @@ class ToonConfig:
             print(f"Error saving TOON config: {e}")
 
 
-# --- GUI CLASS ---
 class MainWindow:
     def __init__(self, session):
         self.session = session
