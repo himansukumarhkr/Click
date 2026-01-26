@@ -81,6 +81,7 @@ class ScreenshotSession:
         self.auto_copy_clipboard = False
         self.copy_files_option = True
         self.copy_image_option = True
+        self.save_mode = "docx"
         self.running = False
         self.save_directory = ""
         self.image_paths = []
@@ -129,7 +130,11 @@ class ScreenshotSession:
             if not self.temp_dir or not os.path.exists(self.temp_dir):
                 self.temp_dir = tempfile.mkdtemp(prefix="ScreenshotTool_")
 
-            img_filename = f"screenshot_{count}.jpg"
+            if self.save_mode == "folder":
+                img_filename = f"{self.base_name_no_ext}_{count}.jpg"
+            else:
+                img_filename = f"screenshot_{count}.jpg"
+                
             img_path = os.path.join(self.temp_dir, img_filename)
 
             img.save(img_path, "JPEG", quality=90)
@@ -138,41 +143,52 @@ class ScreenshotSession:
             if self.auto_copy_clipboard:
                 self.copy_dual_to_clipboard(img, [img_path])
 
-            if os.path.exists(self.current_filename):
+            if self.save_mode == "folder":
+                target_path = os.path.join(self.current_filename, img_filename)
                 try:
-                    current_size = os.path.getsize(self.current_filename)
-                    img_size = os.path.getsize(img_path)
-                    if self.max_size_bytes > 0 and (current_size + img_size + 10240) > self.max_size_bytes:
-                        self._rotate_file()
-                except OSError:
-                    pass
-
-            if self.doc is None:
-                self.initialize_document()
-
-            text_parts = []
-            if self.log_window_titles and window_title:
-                text_parts.append(window_title)
-            if self.append_sequence_number:
-                text_parts.append(str(count))
-
-            if text_parts:
-                self.doc.add_paragraph(" ".join(text_parts))
-
-            self.doc.add_picture(img_path, width=Inches(6))
-            self.doc.add_paragraph("-" * 50)
-
-            try:
-                self.doc.save(self.current_filename)
-                self.last_known_size_str = self.get_formatted_size(self.current_filename)
-                if self.gui_callback:
-                    self.gui_callback("UPDATE_SIZE", self.last_known_size_str)
-                self.file_locked_warning_shown = False
-            except PermissionError:
-                if not self.file_locked_warning_shown:
+                    shutil.copy2(img_path, target_path)
+                    self.last_known_size_str = self.get_folder_size_str(self.current_filename)
                     if self.gui_callback:
-                        self.gui_callback("WARNING", "File Open in Word!", "Close to save")
-                    self.file_locked_warning_shown = True
+                        self.gui_callback("UPDATE_SIZE", self.last_known_size_str)
+                except Exception as e:
+                    print(f"Folder Save Error: {e}")
+
+            else:
+                if os.path.exists(self.current_filename):
+                    try:
+                        current_size = os.path.getsize(self.current_filename)
+                        img_size = os.path.getsize(img_path)
+                        if self.max_size_bytes > 0 and (current_size + img_size + 10240) > self.max_size_bytes:
+                            self._rotate_file()
+                    except OSError:
+                        pass
+
+                if self.doc is None:
+                    self.initialize_document()
+
+                text_parts = []
+                if self.log_window_titles and window_title:
+                    text_parts.append(window_title)
+                if self.append_sequence_number:
+                    text_parts.append(str(count))
+
+                if text_parts:
+                    self.doc.add_paragraph(" ".join(text_parts))
+
+                self.doc.add_picture(img_path, width=Inches(6))
+                self.doc.add_paragraph("-" * 50)
+
+                try:
+                    self.doc.save(self.current_filename)
+                    self.last_known_size_str = self.get_formatted_size(self.current_filename)
+                    if self.gui_callback:
+                        self.gui_callback("UPDATE_SIZE", self.last_known_size_str)
+                    self.file_locked_warning_shown = False
+                except PermissionError:
+                    if not self.file_locked_warning_shown:
+                        if self.gui_callback:
+                            self.gui_callback("WARNING", "File Open in Word!", "Close to save")
+                        self.file_locked_warning_shown = True
 
         except Exception as e:
             print(f"Save Error: {e}")
@@ -188,35 +204,48 @@ class ScreenshotSession:
                     except OSError:
                         pass
 
-            if self.doc and len(self.doc.paragraphs) >= 2:
-                try:
-                    p = self.doc.paragraphs[-1]
-                    p._element.getparent().remove(p._element)
-                    if self.doc.paragraphs:
+            if self.save_mode == "folder":
+                target_file = os.path.join(self.current_filename, f"{self.base_name_no_ext}_{self.session_count}.jpg")
+                if os.path.exists(target_file):
+                    try:
+                        os.remove(target_file)
+                    except OSError:
+                        pass
+                self.last_known_size_str = self.get_folder_size_str(self.current_filename)
+
+            else:
+                if self.doc and len(self.doc.paragraphs) >= 2:
+                    try:
                         p = self.doc.paragraphs[-1]
                         p._element.getparent().remove(p._element)
-                    if self.doc.paragraphs:
-                        last_p = self.doc.paragraphs[-1]
-                        if last_p.text != "-" * 50 and not last_p.text.startswith("Screenshot Log"):
-                            last_p._element.getparent().remove(last_p._element)
-                except Exception:
-                    pass
+                        if self.doc.paragraphs:
+                            p = self.doc.paragraphs[-1]
+                            p._element.getparent().remove(p._element)
+                        if self.doc.paragraphs:
+                            last_p = self.doc.paragraphs[-1]
+                            if last_p.text != "-" * 50 and not last_p.text.startswith("Screenshot Log"):
+                                last_p._element.getparent().remove(last_p._element)
+                    except Exception:
+                        pass
 
-                try:
-                    self.doc.save(self.current_filename)
-                    self.last_known_size_str = self.get_formatted_size(self.current_filename)
-                    if self.gui_callback:
-                        self.gui_callback("UNDO", self.session_count, self.last_known_size_str)
-                except PermissionError:
-                    if self.gui_callback:
-                        self.gui_callback("WARNING", "File Open in Word!", "Undo in memory only")
+                    try:
+                        self.doc.save(self.current_filename)
+                        self.last_known_size_str = self.get_formatted_size(self.current_filename)
+                        self.file_locked_warning_shown = False
+                    except PermissionError:
+                        if self.gui_callback:
+                            self.gui_callback("WARNING", "File Open in Word!", "Undo in memory only")
 
             self.session_count -= 1
+            if self.gui_callback:
+                self.gui_callback("UNDO", self.session_count, self.last_known_size_str)
 
         except Exception as e:
             print(f"Undo Error: {e}")
 
     def _rotate_file(self):
+        if self.save_mode == "folder": return
+
         print(f"\n[!] Limit reached. Rotating file...")
         if not self.is_split_mode:
             self.is_split_mode = True
@@ -242,6 +271,7 @@ class ScreenshotSession:
 
     def force_rotate(self):
         if not self.running or not self.current_filename: return False
+        if self.save_mode == "folder": return False
         self._rotate_file()
         return True
 
@@ -270,27 +300,55 @@ class ScreenshotSession:
             return "Unknown Window"
 
     def get_unique_filename(self, base_name):
-        full_path = os.path.join(self.save_directory, base_name)
-        if not full_path.lower().endswith(".docx"):
-            full_path += ".docx"
-        if not os.path.exists(full_path):
-            return full_path
-        name, ext = os.path.splitext(full_path)
-        counter = 1
-        while True:
-            new_name = f"{name}_{counter}{ext}"
-            if not os.path.exists(new_name):
-                return new_name
-            counter += 1
+        if self.save_mode == "folder":
+            full_path = os.path.join(self.save_directory, base_name)
+            if not os.path.exists(full_path):
+                return full_path
+            counter = 1
+            while True:
+                new_name = f"{base_name}_{counter}"
+                new_path = os.path.join(self.save_directory, new_name)
+                if not os.path.exists(new_path):
+                    return new_path
+                counter += 1
+        else:
+            full_path = os.path.join(self.save_directory, base_name)
+            if not full_path.lower().endswith(".docx"):
+                full_path += ".docx"
+            if not os.path.exists(full_path):
+                return full_path
+            name, ext = os.path.splitext(full_path)
+            counter = 1
+            while True:
+                new_name = f"{name}_{counter}{ext}"
+                if not os.path.exists(new_name):
+                    return new_name
+                counter += 1
 
     def get_formatted_size(self, filepath):
         if not os.path.exists(filepath): return "0 KB"
-        size_bytes = os.path.getsize(filepath)
+        return self._format_bytes(os.path.getsize(filepath))
+
+    def get_folder_size_str(self, folder_path):
+        total_size = 0
+        for dirpath, dirnames, filenames in os.walk(folder_path):
+            for f in filenames:
+                fp = os.path.join(dirpath, f)
+                total_size += os.path.getsize(fp)
+        return self._format_bytes(total_size)
+
+    def _format_bytes(self, size_bytes):
         if size_bytes < 1024 * 1024:
             return f"{size_bytes / 1024:.2f} KB"
         return f"{size_bytes / (1024 * 1024):.2f} MB"
 
     def initialize_document(self):
+        if self.save_mode == "folder":
+            if not os.path.exists(self.current_filename):
+                os.makedirs(self.current_filename)
+            self.last_known_size_str = self.get_folder_size_str(self.current_filename)
+            return
+
         if os.path.exists(self.current_filename):
             try:
                 self.doc = Document(self.current_filename)
@@ -434,7 +492,11 @@ class ScreenshotSession:
             if not self.temp_dir or not os.path.exists(self.temp_dir):
                 self.temp_dir = tempfile.mkdtemp(prefix="ScreenshotTool_")
 
-            img_filename = f"screenshot_{count}.jpg"
+            if self.save_mode == "folder":
+                img_filename = f"{self.base_name_no_ext}_{count}.jpg"
+            else:
+                img_filename = f"screenshot_{count}.jpg"
+                
             img_path = os.path.join(self.temp_dir, img_filename)
 
             threading.Thread(target=self._clipboard_worker, args=(img, img_path), daemon=True).start()
@@ -506,14 +568,14 @@ class MainWindow:
 
         self.root = tk.Tk()
         self.root.title("Screenshot Tool")
-        self.root.geometry("550x620")
+        self.root.geometry("550x650")
         self.root.configure(bg=self.colors["bg"])
 
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
         x = (screen_width / 2) - (550 / 2)
-        y = (screen_height / 2) - (620 / 2)
-        self.root.geometry(f"550x620+{int(x)}+{int(y)}")
+        y = (screen_height / 2) - (650 / 2)
+        self.root.geometry(f"550x650+{int(x)}+{int(y)}")
 
         self.notif_window = tk.Toplevel(self.root)
         self.notif_window.withdraw()
@@ -560,6 +622,11 @@ class MainWindow:
         self.btn_browse = self.create_button(dir_frame, "Browse", self.browse_directory, width=10)
         self.btn_browse.pack(side=tk.RIGHT)
 
+        self.create_label(main_frame, "Save Mode")
+        self.combo_mode = ttk.Combobox(main_frame, values=["Word Document (.docx)", "Raw Images (Folder)"], state="readonly")
+        self.combo_mode.current(0)
+        self.combo_mode.pack(fill=tk.X, pady=(0, 10))
+
         self.var_log_title = tk.BooleanVar()
         self.chk_title = self.create_checkbox(main_frame, "Log Active Window Title", self.var_log_title)
 
@@ -585,8 +652,12 @@ class MainWindow:
         tk.Label(frame_cb2, text="(Visible in Win+V History)", fg="gray", bg=self.colors["bg"],
                  font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=5)
 
+        # Hotkey Info
+        info_text = "~ : Take Screenshot | Ctrl+Alt+~ : Undo Last Screenshot"
+        tk.Label(main_frame, text=info_text, fg="gray", bg=self.colors["bg"], font=("Segoe UI", 8, "italic")).pack(pady=(10, 5))
+
         info_frame = tk.Frame(main_frame, bg=self.colors["bg"])
-        info_frame.pack(fill=tk.X, pady=(15, 5))
+        info_frame.pack(fill=tk.X, pady=(5, 5))
 
         self.status_label = tk.Label(info_frame, text="Ready to Start", bg=self.colors["bg"],
                                      fg=self.colors["fg"], font=("Segoe UI", 9))
@@ -679,8 +750,15 @@ class MainWindow:
         self.var_auto_copy.set(data.get("auto_copy", False))
         self.var_copy_files.set(data.get("copy_files", True))
         self.var_copy_image.set(data.get("copy_image", True))
+        
+        mode = data.get("save_mode", "docx")
+        if mode == "folder":
+            self.combo_mode.current(1)
+        else:
+            self.combo_mode.current(0)
 
     def save_settings(self):
+        mode = "docx" if self.combo_mode.current() == 0 else "folder"
         data = {
             "filename": self.entry_name.get(),
             "max_size": self.entry_size.get(),
@@ -689,7 +767,8 @@ class MainWindow:
             "append_num": self.var_append_num.get(),
             "auto_copy": self.var_auto_copy.get(),
             "copy_files": self.var_copy_files.get(),
-            "copy_image": self.var_copy_image.get()
+            "copy_image": self.var_copy_image.get(),
+            "save_mode": mode
         }
         ToonConfig.save(self.config_file, data)
 
@@ -827,6 +906,7 @@ class MainWindow:
         self.entry_size.config(state='disabled')
         self.entry_dir.config(state='disabled')
         self.btn_browse.config(state='disabled')
+        self.combo_mode.config(state='disabled')
         self.chk_title.config(state='disabled')
         self.chk_num.config(state='disabled')
         self.chk_auto_copy.config(state='disabled')
@@ -864,6 +944,7 @@ class MainWindow:
         self.entry_size.config(state='normal')
         self.entry_dir.config(state='normal')
         self.btn_browse.config(state='normal')
+        self.combo_mode.config(state='readonly')
         self.chk_title.config(state='normal')
         self.chk_num.config(state='normal')
         self.chk_auto_copy.config(state='normal')
