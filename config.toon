@@ -1,9 +1,9 @@
 filename: TC41
-max_size: 0
+max_size: 1
 save_dir: C:\Users\himan\Desktop\Evidence
 log_title: False
 append_num: False
 auto_copy: False
 copy_files: False
-copy_image: False
-save_mode: docx
+copy_image: True
+save_mode: folder

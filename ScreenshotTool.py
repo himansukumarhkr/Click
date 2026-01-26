@@ -144,9 +144,21 @@ class ScreenshotSession:
                 self.copy_dual_to_clipboard(img, [img_path])
 
             if self.save_mode == "folder":
+                # Ensure the folder exists
+                if not os.path.exists(self.current_filename):
+                    os.makedirs(self.current_filename)
+                    
                 target_path = os.path.join(self.current_filename, img_filename)
                 try:
-                    shutil.copy2(img_path, target_path)
+                    for _ in range(3):
+                        try:
+                            shutil.copyfile(img_path, target_path)
+                            break
+                        except PermissionError:
+                            time.sleep(0.1)
+                    else:
+                        shutil.copyfile(img_path, target_path)
+
                     self.last_known_size_str = self.get_folder_size_str(self.current_filename)
                     if self.gui_callback:
                         self.gui_callback("UPDATE_SIZE", self.last_known_size_str)
@@ -212,6 +224,8 @@ class ScreenshotSession:
                     except OSError:
                         pass
                 self.last_known_size_str = self.get_folder_size_str(self.current_filename)
+                if self.gui_callback:
+                    self.gui_callback("UNDO", self.session_count, self.last_known_size_str)
 
             else:
                 if self.doc and len(self.doc.paragraphs) >= 2:
@@ -247,20 +261,34 @@ class ScreenshotSession:
         if self.save_mode == "folder": return
 
         print(f"\n[!] Limit reached. Rotating file...")
+        
+        dir_name = os.path.dirname(self.current_filename)
+        
         if not self.is_split_mode:
             self.is_split_mode = True
             part1_name = f"{self.base_name_no_ext}_Part1.docx"
+            part1_path = os.path.join(dir_name, part1_name)
+            
             part2_name = f"{self.base_name_no_ext}_Part2.docx"
+            part2_path = os.path.join(dir_name, part2_name)
+            
+            self.doc = None 
+            
             try:
-                os.rename(self.current_filename, part1_name)
-            except OSError:
-                pass
-            self.current_filename = part2_name
+                if not os.path.exists(part1_path):
+                    os.rename(self.current_filename, part1_path)
+            except OSError as e:
+                print(f"Rename Error: {e}")
+                
+            self.current_filename = part2_path
             self.current_part = 2
         else:
             self.current_part += 1
-            self.current_filename = f"{self.base_name_no_ext}_Part{self.current_part}.docx"
-
+            new_name = f"{self.base_name_no_ext}_Part{self.current_part}.docx"
+            self.current_filename = os.path.join(dir_name, new_name)
+        
+        print(f"[i] Now saving to: {self.current_filename}")
+        
         self.doc = Document()
         self.doc.add_heading(f'Screenshot Log - Part {self.current_part}', 0)
         try:
@@ -268,6 +296,9 @@ class ScreenshotSession:
         except PermissionError:
             pass
         self.last_known_size_str = self.get_formatted_size(self.current_filename)
+        
+        if self.gui_callback:
+            self.gui_callback("UPDATE_FILENAME", self.current_filename)
 
     def force_rotate(self):
         if not self.running or not self.current_filename: return False
@@ -327,7 +358,10 @@ class ScreenshotSession:
 
     def get_formatted_size(self, filepath):
         if not os.path.exists(filepath): return "0 KB"
-        return self._format_bytes(os.path.getsize(filepath))
+        size_bytes = os.path.getsize(filepath)
+        if size_bytes < 1024 * 1024:
+            return f"{size_bytes / 1024:.2f} KB"
+        return f"{size_bytes / (1024 * 1024):.2f} MB"
 
     def get_folder_size_str(self, folder_path):
         total_size = 0
@@ -568,14 +602,14 @@ class MainWindow:
 
         self.root = tk.Tk()
         self.root.title("Screenshot Tool")
-        self.root.geometry("550x650")
+        self.root.geometry("600x700")
         self.root.configure(bg=self.colors["bg"])
 
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
-        x = (screen_width / 2) - (550 / 2)
-        y = (screen_height / 2) - (650 / 2)
-        self.root.geometry(f"550x650+{int(x)}+{int(y)}")
+        x = (screen_width / 2) - (600 / 2)
+        y = (screen_height / 2) - (700 / 2)
+        self.root.geometry(f"600x700+{int(x)}+{int(y)}")
 
         self.notif_window = tk.Toplevel(self.root)
         self.notif_window.withdraw()
@@ -653,7 +687,7 @@ class MainWindow:
                  font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=5)
 
         # Hotkey Info
-        info_text = "~ : Take Screenshot | Ctrl+Alt+~ : Undo Last Screenshot"
+        info_text = "~ (Tilde): Take Screenshot | Ctrl+Alt+~: Undo Last"
         tk.Label(main_frame, text=info_text, fg="gray", bg=self.colors["bg"], font=("Segoe UI", 8, "italic")).pack(pady=(10, 5))
 
         info_frame = tk.Frame(main_frame, bg=self.colors["bg"])
@@ -791,6 +825,12 @@ class MainWindow:
                     self.size_label.config(text=f"Size: {size_str}")
                     if self.notif_window.state() == "normal":
                         self.lbl_notif_info.config(text=f"{size_str}")
+                
+                elif action == "UPDATE_FILENAME":
+                    new_path = args[1]
+                    date_str = datetime.datetime.now().strftime("%d-%m-%Y")
+                    display_path = f".../{date_str}/{os.path.basename(new_path)}"
+                    self.status_label.config(text=f"Active | {display_path}")
 
                 elif action == "UNDO":
                     count, size_str = args[1], args[2]
@@ -861,6 +901,10 @@ class MainWindow:
         self.session.file_locked_warning_shown = False
         self.session.last_known_size_str = "0 KB"
 
+        # Determine Mode
+        mode_idx = self.combo_mode.current()
+        self.session.save_mode = "docx" if mode_idx == 0 else "folder"
+
         base_dir = self.entry_dir.get().strip()
         if not base_dir: base_dir = os.path.join(os.path.expanduser("~"), "Desktop", "Evidence")
         date_str = datetime.datetime.now().strftime("%d-%m-%Y")
@@ -879,7 +923,9 @@ class MainWindow:
         user_input = self.entry_name.get().strip()
         if not user_input: user_input = "screenshots"
         self.session.current_filename = self.session.get_unique_filename(user_input)
-        self.session.base_name_no_ext = os.path.splitext(self.session.current_filename)[0]
+        
+        # FIX: Use basename to avoid full path in filename construction
+        self.session.base_name_no_ext = os.path.splitext(os.path.basename(self.session.current_filename))[0]
 
         try:
             mb = float(self.entry_size.get().strip())
