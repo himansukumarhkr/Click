@@ -1,9 +1,11 @@
 filename: TC41
-max_size: 1
+max_size: 0.5
 save_dir: C:\Users\himan\Desktop\Evidence
-log_title: False
-append_num: False
+log_title: True
+append_num: True
 auto_copy: False
 copy_files: False
 copy_image: True
 save_mode: folder
+window_width: 600
+window_height: 662

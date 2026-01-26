@@ -266,26 +266,22 @@ class ScreenshotSession:
         
         if not self.is_split_mode:
             self.is_split_mode = True
-            part1_name = f"{self.base_name_no_ext}_Part1.docx"
-            part1_path = os.path.join(dir_name, part1_name)
             
-            part2_name = f"{self.base_name_no_ext}_Part2.docx"
-            part2_path = os.path.join(dir_name, part2_name)
+            # Determine Part 1 Name (check if it exists to avoid overwrite)
+            next_path, next_part = self._get_next_part_filename(self.current_filename, 1)
             
             self.doc = None 
-            
             try:
-                if not os.path.exists(part1_path):
-                    os.rename(self.current_filename, part1_path)
+                os.rename(self.current_filename, next_path)
             except OSError as e:
                 print(f"Rename Error: {e}")
-                
-            self.current_filename = part2_path
-            self.current_part = 2
+            
+            # Now find next available part for the NEW file
+            self.current_filename, self.current_part = self._get_next_part_filename(self.current_filename, next_part + 1)
+            
         else:
-            self.current_part += 1
-            new_name = f"{self.base_name_no_ext}_Part{self.current_part}.docx"
-            self.current_filename = os.path.join(dir_name, new_name)
+            # Already split, just find next part
+            self.current_filename, self.current_part = self._get_next_part_filename(self.current_filename, self.current_part + 1)
         
         print(f"[i] Now saving to: {self.current_filename}")
         
@@ -299,6 +295,17 @@ class ScreenshotSession:
         
         if self.gui_callback:
             self.gui_callback("UPDATE_FILENAME", self.current_filename)
+
+    def _get_next_part_filename(self, base_path, part_num):
+        dir_name = os.path.dirname(base_path)
+        base_name = self.base_name_no_ext
+        
+        while True:
+            new_name = f"{base_name}_Part{part_num}.docx"
+            full_path = os.path.join(dir_name, new_name)
+            if not os.path.exists(full_path):
+                return full_path, part_num
+            part_num += 1
 
     def force_rotate(self):
         if not self.running or not self.current_filename: return False
@@ -343,17 +350,19 @@ class ScreenshotSession:
                     return new_path
                 counter += 1
         else:
-            full_path = os.path.join(self.save_directory, base_name)
-            if not full_path.lower().endswith(".docx"):
-                full_path += ".docx"
-            if not os.path.exists(full_path):
-                return full_path
-            name, ext = os.path.splitext(full_path)
-            counter = 1
+            counter = 0
             while True:
-                new_name = f"{name}_{counter}{ext}"
-                if not os.path.exists(new_name):
-                    return new_name
+                if counter == 0:
+                    current_name = base_name
+                else:
+                    current_name = f"{base_name}_{counter}"
+                
+                full_path = os.path.join(self.save_directory, current_name + ".docx")
+                part1_path = os.path.join(self.save_directory, current_name + "_Part1.docx")
+                
+                if not os.path.exists(full_path) and not os.path.exists(part1_path):
+                    return full_path
+                
                 counter += 1
 
     def get_formatted_size(self, filepath):
@@ -602,14 +611,20 @@ class MainWindow:
 
         self.root = tk.Tk()
         self.root.title("Screenshot Tool")
-        self.root.geometry("600x700")
+        
+        # Load saved window size or default
+        config = ToonConfig.load(self.config_file)
+        width = int(config.get("window_width", 600))
+        height = int(config.get("window_height", 700))
+        self.root.geometry(f"{width}x{height}")
+        
         self.root.configure(bg=self.colors["bg"])
 
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
-        x = (screen_width / 2) - (600 / 2)
-        y = (screen_height / 2) - (700 / 2)
-        self.root.geometry(f"600x700+{int(x)}+{int(y)}")
+        x = (screen_width / 2) - (width / 2)
+        y = (screen_height / 2) - (height / 2)
+        self.root.geometry(f"{width}x{height}+{int(x)}+{int(y)}")
 
         self.notif_window = tk.Toplevel(self.root)
         self.notif_window.withdraw()
@@ -632,7 +647,32 @@ class MainWindow:
 
         self.hide_timer = None
 
-        main_frame = tk.Frame(self.root, bg=self.colors["bg"], padx=30, pady=20)
+        # Create a canvas and scrollbar for the main frame
+        self.canvas = tk.Canvas(self.root, bg=self.colors["bg"], highlightthickness=0)
+        self.scrollbar_y = ttk.Scrollbar(self.root, orient="vertical", command=self.canvas.yview)
+        self.scrollbar_x = ttk.Scrollbar(self.root, orient="horizontal", command=self.canvas.xview)
+        self.scrollable_frame = tk.Frame(self.canvas, bg=self.colors["bg"])
+
+        self.scrollable_frame.bind(
+            "<Configure>",
+            self._on_frame_configure
+        )
+
+        self.canvas_window = self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw", width=width-20)
+        self.canvas.configure(yscrollcommand=self.scrollbar_y.set, xscrollcommand=self.scrollbar_x.set)
+
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar_y.pack(side="right", fill="y")
+        self.scrollbar_x.pack(side="bottom", fill="x")
+        
+        # Bind mousewheel to canvas
+        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+        
+        # Bind resize event to update canvas window width
+        self.canvas.bind("<Configure>", self._on_canvas_configure)
+
+        # Add padding to the scrollable frame content
+        main_frame = tk.Frame(self.scrollable_frame, bg=self.colors["bg"], padx=30, pady=20)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
         tk.Label(main_frame, text="Screenshot Tool", font=("Segoe UI", 18, "bold"),
@@ -734,6 +774,41 @@ class MainWindow:
         self.check_gui_queue()
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
+    def _on_frame_configure(self, event):
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        self._toggle_scrollbars()
+
+    def _on_canvas_configure(self, event):
+        # Resize the inner frame to match the canvas width
+        self.canvas.itemconfig(self.canvas_window, width=event.width)
+        self._toggle_scrollbars()
+
+    def _toggle_scrollbars(self):
+        # Check if vertical scrolling is needed
+        bbox = self.canvas.bbox("all")
+        if bbox:
+            scroll_height = bbox[3] - bbox[1]
+            canvas_height = self.canvas.winfo_height()
+            
+            if scroll_height > canvas_height:
+                self.scrollbar_y.pack(side="right", fill="y")
+            else:
+                self.scrollbar_y.pack_forget()
+            
+            # Check if horizontal scrolling is needed (less common with width binding but good for safety)
+            scroll_width = bbox[2] - bbox[0]
+            canvas_width = self.canvas.winfo_width()
+            
+            if scroll_width > canvas_width:
+                self.scrollbar_x.pack(side="bottom", fill="x")
+            else:
+                self.scrollbar_x.pack_forget()
+
+    def _on_mousewheel(self, event):
+        # Only scroll if scrollbar is visible
+        if self.scrollbar_y.winfo_ismapped():
+            self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+
     def create_label(self, parent, text):
         lbl = tk.Label(parent, text=text, bg=self.colors["bg"], fg=self.colors["fg"], font=("Segoe UI", 9))
         lbl.pack(anchor="w", pady=(0, 2))
@@ -802,7 +877,9 @@ class MainWindow:
             "auto_copy": self.var_auto_copy.get(),
             "copy_files": self.var_copy_files.get(),
             "copy_image": self.var_copy_image.get(),
-            "save_mode": mode
+            "save_mode": mode,
+            "window_width": self.root.winfo_width(),
+            "window_height": self.root.winfo_height()
         }
         ToonConfig.save(self.config_file, data)
 
