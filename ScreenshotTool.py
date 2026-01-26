@@ -14,6 +14,7 @@ import shutil
 import queue
 import time
 import io
+import glob
 
 kernel32 = ctypes.windll.kernel32
 user32 = ctypes.windll.user32
@@ -54,10 +55,11 @@ user32.SetClipboardData.restype = HANDLE
 user32.CloseClipboard.argtypes = []
 user32.CloseClipboard.restype = BOOL
 
+user32.IsClipboardFormatAvailable.argtypes = [UINT]
+user32.IsClipboardFormatAvailable.restype = BOOL
 
 class POINT(ctypes.Structure):
     _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
-
 
 class DROPFILES(ctypes.Structure):
     _fields_ = [
@@ -66,7 +68,6 @@ class DROPFILES(ctypes.Structure):
         ("fNC", wintypes.BOOL),
         ("fWide", wintypes.BOOL),
     ]
-
 
 class ScreenshotSession:
     def __init__(self):
@@ -87,8 +88,7 @@ class ScreenshotSession:
         self.image_paths = []
         self.temp_dir = None
         self.doc = None
-
-        # Threading & Queues
+        
         self.save_queue = queue.Queue()
         self.gui_callback = None
         self.worker_thread = None
@@ -112,15 +112,15 @@ class ScreenshotSession:
                     if not self.running and self.save_queue.empty():
                         break
                     continue
-
+                
                 if task is None: break
-
+                
                 if task[0] == "UNDO":
                     self._process_undo()
                 else:
                     img, count, window_title = task
                     self._process_save(img, count, window_title)
-
+                
                 self.save_queue.task_done()
             except Exception as e:
                 print(f"Worker Error: {e}")
@@ -136,7 +136,7 @@ class ScreenshotSession:
                 img_filename = f"screenshot_{count}.jpg"
                 
             img_path = os.path.join(self.temp_dir, img_filename)
-
+            
             img.save(img_path, "JPEG", quality=90)
             self.image_paths.append(img_path)
 
@@ -144,7 +144,6 @@ class ScreenshotSession:
                 self.copy_dual_to_clipboard(img, [img_path])
 
             if self.save_mode == "folder":
-                # Ensure the folder exists
                 if not os.path.exists(self.current_filename):
                     os.makedirs(self.current_filename)
                     
@@ -172,24 +171,25 @@ class ScreenshotSession:
                         img_size = os.path.getsize(img_path)
                         if self.max_size_bytes > 0 and (current_size + img_size + 10240) > self.max_size_bytes:
                             self._rotate_file()
-                    except OSError:
-                        pass
+                    except OSError: pass
 
                 if self.doc is None:
                     self.initialize_document()
 
-                text_parts = []
-                if self.log_window_titles and window_title:
-                    text_parts.append(window_title)
-                if self.append_sequence_number:
-                    text_parts.append(str(count))
+                final_text = ""
+                if self.log_window_titles and window_title and self.append_sequence_number:
+                    final_text = f"{window_title} {count}"
+                elif self.log_window_titles and window_title:
+                    final_text = window_title
+                elif self.append_sequence_number:
+                    final_text = str(count)
 
-                if text_parts:
-                    self.doc.add_paragraph(" ".join(text_parts))
+                if final_text:
+                    self.doc.add_paragraph(final_text)
 
                 self.doc.add_picture(img_path, width=Inches(6))
                 self.doc.add_paragraph("-" * 50)
-
+                
                 try:
                     self.doc.save(self.current_filename)
                     self.last_known_size_str = self.get_formatted_size(self.current_filename)
@@ -201,7 +201,7 @@ class ScreenshotSession:
                         if self.gui_callback:
                             self.gui_callback("WARNING", "File Open in Word!", "Close to save")
                         self.file_locked_warning_shown = True
-
+            
         except Exception as e:
             print(f"Save Error: {e}")
 
@@ -211,18 +211,14 @@ class ScreenshotSession:
             if self.image_paths:
                 last_img = self.image_paths.pop()
                 if os.path.exists(last_img):
-                    try:
-                        os.remove(last_img)
-                    except OSError:
-                        pass
+                    try: os.remove(last_img)
+                    except OSError: pass
 
             if self.save_mode == "folder":
                 target_file = os.path.join(self.current_filename, f"{self.base_name_no_ext}_{self.session_count}.jpg")
                 if os.path.exists(target_file):
-                    try:
-                        os.remove(target_file)
-                    except OSError:
-                        pass
+                    try: os.remove(target_file)
+                    except OSError: pass
                 self.last_known_size_str = self.get_folder_size_str(self.current_filename)
                 if self.gui_callback:
                     self.gui_callback("UNDO", self.session_count, self.last_known_size_str)
@@ -239,15 +235,14 @@ class ScreenshotSession:
                             last_p = self.doc.paragraphs[-1]
                             if last_p.text != "-" * 50 and not last_p.text.startswith("Screenshot Log"):
                                 last_p._element.getparent().remove(last_p._element)
-                    except Exception:
-                        pass
+                    except Exception: pass
 
                     try:
                         self.doc.save(self.current_filename)
                         self.last_known_size_str = self.get_formatted_size(self.current_filename)
                         self.file_locked_warning_shown = False
                     except PermissionError:
-                        if self.gui_callback:
+                         if self.gui_callback:
                             self.gui_callback("WARNING", "File Open in Word!", "Undo in memory only")
 
             self.session_count -= 1
@@ -256,45 +251,6 @@ class ScreenshotSession:
 
         except Exception as e:
             print(f"Undo Error: {e}")
-
-    def _rotate_file(self):
-        if self.save_mode == "folder": return
-
-        print(f"\n[!] Limit reached. Rotating file...")
-        
-        dir_name = os.path.dirname(self.current_filename)
-        
-        if not self.is_split_mode:
-            self.is_split_mode = True
-            
-            # Determine Part 1 Name (check if it exists to avoid overwrite)
-            next_path, next_part = self._get_next_part_filename(self.current_filename, 1)
-            
-            self.doc = None 
-            try:
-                os.rename(self.current_filename, next_path)
-            except OSError as e:
-                print(f"Rename Error: {e}")
-            
-            # Now find next available part for the NEW file
-            self.current_filename, self.current_part = self._get_next_part_filename(self.current_filename, next_part + 1)
-            
-        else:
-            # Already split, just find next part
-            self.current_filename, self.current_part = self._get_next_part_filename(self.current_filename, self.current_part + 1)
-        
-        print(f"[i] Now saving to: {self.current_filename}")
-        
-        self.doc = Document()
-        self.doc.add_heading(f'Screenshot Log - Part {self.current_part}', 0)
-        try:
-            self.doc.save(self.current_filename)
-        except PermissionError:
-            pass
-        self.last_known_size_str = self.get_formatted_size(self.current_filename)
-        
-        if self.gui_callback:
-            self.gui_callback("UPDATE_FILENAME", self.current_filename)
 
     def _get_next_part_filename(self, base_path, part_num):
         dir_name = os.path.dirname(base_path)
@@ -306,6 +262,41 @@ class ScreenshotSession:
             if not os.path.exists(full_path):
                 return full_path, part_num
             part_num += 1
+
+    def _rotate_file(self):
+        if self.save_mode == "folder": return
+
+        print(f"\n[!] Limit reached. Rotating file...")
+        
+        dir_name = os.path.dirname(self.current_filename)
+        
+        if not self.is_split_mode:
+            self.is_split_mode = True
+            
+            next_path, next_part = self._get_next_part_filename(self.current_filename, 1)
+            
+            self.doc = None 
+            try:
+                os.rename(self.current_filename, next_path)
+            except OSError as e:
+                print(f"Rename Error: {e}")
+            
+            self.current_filename, self.current_part = self._get_next_part_filename(self.current_filename, next_part + 1)
+            
+        else:
+            self.current_filename, self.current_part = self._get_next_part_filename(self.current_filename, self.current_part + 1)
+        
+        print(f"[i] Now saving to: {self.current_filename}")
+        
+        self.doc = Document()
+        try:
+            self.doc.save(self.current_filename)
+        except PermissionError:
+            pass
+        self.last_known_size_str = self.get_formatted_size(self.current_filename)
+        
+        if self.gui_callback:
+            self.gui_callback("UPDATE_FILENAME", self.current_filename)
 
     def force_rotate(self):
         if not self.running or not self.current_filename: return False
@@ -358,9 +349,9 @@ class ScreenshotSession:
                     current_name = f"{base_name}_{counter}"
                 
                 full_path = os.path.join(self.save_directory, current_name + ".docx")
-                part1_path = os.path.join(self.save_directory, current_name + "_Part1.docx")
                 
-                if not os.path.exists(full_path) and not os.path.exists(part1_path):
+                pattern = os.path.join(self.save_directory, f"{current_name}_Part*.docx")
+                if not os.path.exists(full_path) and not glob.glob(pattern):
                     return full_path
                 
                 counter += 1
@@ -399,10 +390,6 @@ class ScreenshotSession:
                 self.doc = Document()
         else:
             self.doc = Document()
-            if self.current_part > 1:
-                self.doc.add_heading(f'Screenshot Log - Part {self.current_part}', 0)
-            else:
-                self.doc.add_heading('Screenshot Log', 0)
             try:
                 self.doc.save(self.current_filename)
             except PermissionError:
