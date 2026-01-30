@@ -16,6 +16,9 @@ import time
 import io
 import re
 
+# ==========================================
+#        DPI AWARENESS
+# ==========================================
 try:
     ctypes.windll.shcore.SetProcessDpiAwareness(2)
 except Exception:
@@ -24,6 +27,9 @@ except Exception:
     except Exception:
         pass
 
+# ==========================================
+#        WINDOWS API
+# ==========================================
 kernel32 = ctypes.windll.kernel32
 user32 = ctypes.windll.user32
 
@@ -77,6 +83,77 @@ WM_HOTKEY = 0x0312
 WM_USER = 0x0400
 WM_STOP_LISTENER = WM_USER + 1
 
+
+# ==========================================
+#        CUSTOM SCROLL FRAME
+# ==========================================
+class AutoScrollFrame(ctk.CTkFrame):
+    def __init__(self, master, bg_color_hex, **kwargs):
+        super().__init__(master, **kwargs)
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+
+        self.canvas = tk.Canvas(self, highlightthickness=0, bd=0, bg=bg_color_hex)
+        self.canvas.grid(row=0, column=0, sticky="nsew")
+
+        self.vsb = ctk.CTkScrollbar(self, orientation="vertical", command=self.canvas.yview)
+        self.hsb = ctk.CTkScrollbar(self, orientation="horizontal", command=self.canvas.xview)
+        self.canvas.configure(yscrollcommand=self.vsb.set, xscrollcommand=self.hsb.set)
+
+        self.scrollable_frame = ctk.CTkFrame(self.canvas, fg_color=bg_color_hex)
+        self.canvas_window = self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+
+        self.scrollable_frame.bind("<Configure>", self._on_frame_configure)
+        self.canvas.bind("<Configure>", self._on_canvas_configure)
+
+        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+        self.canvas.bind_all("<Shift-MouseWheel>", self._on_shift_mousewheel)
+
+    def _on_frame_configure(self, event):
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        self._toggle_scrollbars()
+
+    def _on_canvas_configure(self, event):
+        if self.scrollable_frame.winfo_reqwidth() < event.width:
+            self.canvas.itemconfig(self.canvas_window, width=event.width)
+        self._toggle_scrollbars()
+
+    def _toggle_scrollbars(self):
+        bbox = self.canvas.bbox("all")
+        if not bbox: return
+
+        scroll_h = bbox[3] - bbox[1]
+        scroll_w = bbox[2] - bbox[0]
+        canvas_h = self.canvas.winfo_height()
+        canvas_w = self.canvas.winfo_width()
+
+        if scroll_h > canvas_h:
+            self.vsb.grid(row=0, column=1, sticky="ns")
+        else:
+            self.vsb.grid_forget()
+
+        if scroll_w > canvas_w:
+            self.hsb.grid(row=1, column=0, sticky="ew")
+        else:
+            self.hsb.grid_forget()
+
+    def _on_mousewheel(self, event):
+        if self.vsb.winfo_ismapped():
+            self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def _on_shift_mousewheel(self, event):
+        if self.hsb.winfo_ismapped():
+            self.canvas.xview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def update_bg_color(self, color):
+        self.canvas.configure(bg=color)
+        self.scrollable_frame.configure(fg_color=color)
+        self.canvas.update_idletasks()
+
+
+# ==========================================
+#            LOGIC CLASSES
+# ==========================================
 
 class HotkeyListener:
     def __init__(self, callback_capture, callback_undo, callback_error):
@@ -141,6 +218,7 @@ class ScreenshotSession:
         self.running = True
         self.status = "Active"
         self._initialize()
+        self.session_id = self.current_filename
 
     def _initialize(self):
         full_dir = self.config['save_dir']
@@ -210,7 +288,7 @@ class ScreenshotSession:
             return
         self.session_count += 1
         window_title = self.get_cleaned_window_title() if self.config['log_title'] else None
-        self.gui_queue.put(("NOTIFY", self.current_filename, self.session_count, self.last_known_size_str))
+        self.gui_queue.put(("NOTIFY", self.session_id, self.session_count, self.last_known_size_str))
         if self.config['auto_copy']:
             path = os.path.join(self.temp_dir, f"clip_{self.session_count}.jpg")
             threading.Thread(target=self._clipboard_worker, args=(img, path), daemon=True).start()
@@ -279,7 +357,7 @@ class ScreenshotSession:
                         self.gui_queue.put(("WARNING", "File Locked", "Close Word to save"))
                         self.file_locked_warning_shown = True
 
-            self.gui_queue.put(("UPDATE_SESSION", self.current_filename, self.session_count, self.last_known_size_str))
+            self.gui_queue.put(("UPDATE_SESSION", self.session_id, self.session_count, self.last_known_size_str))
         except Exception as e:
             print(f"Save Err: {e}")
 
@@ -309,7 +387,7 @@ class ScreenshotSession:
                     except:
                         pass
             self.session_count -= 1
-            self.gui_queue.put(("UNDO", self.current_filename, self.session_count, self.last_known_size_str))
+            self.gui_queue.put(("UNDO", self.session_id, self.session_count, self.last_known_size_str))
         except:
             pass
 
@@ -461,15 +539,18 @@ class ModernUI(ctk.CTk):
             "bg_main": ("#F3F3F3", "#181818"),
             "bg_sidebar": ("#FFFFFF", "#121212"),
             "card": ("#FFFFFF", "#2b2b2b"),
-            "text": ("black", "#E0E0E0"),
-            "text_sec": ("gray40", "#A0A0A0"),
+            "text": ("black", "white"),
+            "text_sec": ("gray20", "gray80"),
             "input_bg": ("#E0E0E0", "#383838"),
             "accent": "#2196F3", "accent_hover": "#1976D2",
             "success": "#4CAF50", "success_hover": "#388E3C",
             "danger": "#F44336", "danger_hover": "#D32F2F",
             "btn_text": ("black", "white"),
             "btn_default": ("#D0D0D0", "#555555"),
-            "btn_default_hover": ("#B0B0B0", "#666666")
+            "btn_default_hover": ("#B0B0B0", "#666666"),
+            "accent_disabled": ("#AED6F1", "#1F3A52"),
+            "success_disabled": ("#A5D6A7", "#1E4222"),
+            "danger_disabled": ("#EF9A9A", "#4A1F1F"),
         }
 
         self.kernel_config = ToonConfig.load(self.settings_file)
@@ -529,28 +610,35 @@ class ModernUI(ctk.CTk):
         self.action_frame.grid(row=4, column=0, padx=15, pady=20, sticky="ew")
 
         self.btn_resume = ctk.CTkButton(self.action_frame, text="RESUME", command=self.resume_selected,
-                                        fg_color=self.ui_colors["accent"], hover_color=self.ui_colors["accent_hover"],
+                                        fg_color=self.ui_colors["accent_disabled"],
+                                        hover_color=self.ui_colors["accent_hover"],
                                         text_color=self.ui_colors["btn_text"], state="disabled", height=32)
         self.btn_resume.pack(fill="x", pady=5)
 
         self.btn_save = ctk.CTkButton(self.action_frame, text="SAVE & CLOSE", command=self.save_close_selected,
-                                      fg_color=self.ui_colors["success"], hover_color=self.ui_colors["success_hover"],
+                                      fg_color=self.ui_colors["success_disabled"],
+                                      hover_color=self.ui_colors["success_hover"],
                                       text_color=self.ui_colors["btn_text"], state="disabled", height=32)
         self.btn_save.pack(fill="x", pady=5)
 
         self.btn_discard = ctk.CTkButton(self.action_frame, text="DISCARD", command=self.discard_selected,
-                                         fg_color=self.ui_colors["danger"], hover_color=self.ui_colors["danger_hover"],
+                                         fg_color=self.ui_colors["danger_disabled"],
+                                         hover_color=self.ui_colors["danger_hover"],
                                          text_color=self.ui_colors["btn_text"], state="disabled", height=32)
         self.btn_discard.pack(fill="x", pady=5)
 
-        self.main_area = ctk.CTkFrame(self, corner_radius=0, fg_color="transparent")
+        initial_bg = self.ui_colors["bg_main"][1] if ctk.get_appearance_mode() == "Dark" else self.ui_colors["bg_main"][
+            0]
+        self.main_area = AutoScrollFrame(self, bg_color_hex=initial_bg, corner_radius=0)
         self.main_area.grid(row=0, column=1, sticky="nsew", padx=30, pady=30)
         self.main_area.grid_columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(self.main_area, text="Start New Session", font=ctk.CTkFont(size=24, weight="bold"),
+        content_parent = self.main_area.scrollable_frame
+
+        ctk.CTkLabel(content_parent, text="Start New Session", font=ctk.CTkFont(size=24, weight="bold"),
                      text_color=self.ui_colors["text"]).grid(row=0, column=0, sticky="w", pady=(0, 20))
 
-        self.card_config = ctk.CTkFrame(self.main_area, fg_color=self.ui_colors["card"], corner_radius=15)
+        self.card_config = ctk.CTkFrame(content_parent, fg_color=self.ui_colors["card"], corner_radius=15)
         self.card_config.grid(row=1, column=0, sticky="ew", pady=(0, 15))
         self.card_config.grid_columnconfigure(1, weight=1)
 
@@ -580,7 +668,17 @@ class ModernUI(ctk.CTk):
                                           fg_color=self.ui_colors["input_bg"])
         self.combo_mode.grid(row=2, column=1, padx=(0, 20), pady=(0, 15), sticky="ew")
 
-        self.card_opts = ctk.CTkFrame(self.main_area, fg_color=self.ui_colors["card"], corner_radius=15)
+        ctk.CTkLabel(self.card_config, text="Max Size (MB)", text_color=self.ui_colors["text_sec"]).grid(row=3,
+                                                                                                         column=0,
+                                                                                                         padx=20,
+                                                                                                         pady=(0, 15),
+                                                                                                         sticky="w")
+        self.entry_size = ctk.CTkEntry(self.card_config, placeholder_text="0 = Unlimited", border_width=0,
+                                       fg_color=self.ui_colors["input_bg"], text_color=self.ui_colors["text"])
+        self.entry_size.grid(row=3, column=1, padx=(0, 20), pady=(0, 15), sticky="ew")
+        self.entry_size.insert(0, "0")
+
+        self.card_opts = ctk.CTkFrame(content_parent, fg_color=self.ui_colors["card"], corner_radius=15)
         self.card_opts.grid(row=2, column=0, sticky="ew", pady=(0, 20))
 
         self.var_title = ctk.BooleanVar()
@@ -614,27 +712,27 @@ class ModernUI(ctk.CTk):
         ctk.CTkCheckBox(self.card_opts, text="Image (Bitmap)", variable=self.var_copy_img, command=self._validate_subs,
                         text_color=self.ui_colors["text"]).grid(row=3, column=2, padx=20, pady=10, sticky="w")
 
-        self.btn_start = ctk.CTkButton(self.main_area, text="START SESSION", height=50, corner_radius=25,
+        self.btn_start = ctk.CTkButton(content_parent, text="START SESSION", height=50, corner_radius=25,
                                        font=ctk.CTkFont(size=16, weight="bold"), command=self.start_session,
                                        fg_color=self.ui_colors["accent"], text_color="white")
         self.btn_start.grid(row=4, column=0, sticky="ew", pady=10)
 
-        self.btn_split = ctk.CTkButton(self.main_area, text="SPLIT FILE", height=30, width=120,
+        self.btn_split = ctk.CTkButton(content_parent, text="SPLIT FILE", height=30, width=120,
                                        command=self.manual_rotate,
                                        fg_color=self.ui_colors["btn_default"],
                                        hover_color=self.ui_colors["btn_default_hover"],
                                        text_color=self.ui_colors["btn_text"], state="disabled")
         self.btn_split.grid(row=5, column=0, sticky="w", padx=20, pady=(10, 0))
 
-        self.btn_copy = ctk.CTkButton(self.main_area, text="COPY ALL", height=30, width=120, command=self.copy_all,
+        self.btn_copy = ctk.CTkButton(content_parent, text="COPY ALL", height=30, width=120, command=self.copy_all,
                                       fg_color=self.ui_colors["btn_default"],
                                       hover_color=self.ui_colors["btn_default_hover"],
                                       text_color=self.ui_colors["btn_text"], state="disabled")
         self.btn_copy.grid(row=5, column=0, sticky="e", padx=20, pady=(10, 0))
 
-        self.lbl_status = ctk.CTkLabel(self.main_area, text="Ready to capture", text_color=self.ui_colors["text_sec"])
+        self.lbl_status = ctk.CTkLabel(content_parent, text="Ready to capture", text_color=self.ui_colors["text_sec"])
         self.lbl_status.grid(row=6, column=0, pady=(20, 0))
-        ctk.CTkLabel(self.main_area, text="~ (Capture)   |   Ctrl+Alt+~ (Undo)", text_color=self.ui_colors["text_sec"],
+        ctk.CTkLabel(content_parent, text="~ (Capture)   |   Ctrl+Alt+~ (Undo)", text_color=self.ui_colors["text_sec"],
                      font=ctk.CTkFont(size=11)).grid(row=7, column=0)
 
         self.notif = ctk.CTkToplevel(self)
@@ -658,6 +756,9 @@ class ModernUI(ctk.CTk):
         mode = self.switch_theme.get()
         ctk.set_appearance_mode(mode)
         self.update_tree_style(mode)
+
+        idx = 1 if mode == "Dark" else 0
+        self.main_area.update_bg_color(self.ui_colors["bg_main"][idx])
 
     def update_tree_style(self, mode):
         if mode == "Dark":
@@ -722,6 +823,9 @@ class ModernUI(ctk.CTk):
         if not name: name = "screenshot"
         self.entry_name.delete(0, "end");
         self.entry_name.insert(0, name)
+        if conf.get('max_size'):
+            self.entry_size.delete(0, "end")
+            self.entry_size.insert(0, conf.get('max_size'))
 
         self.var_save_date.set(conf.get("save_by_date", True) == 'True' or conf.get("save_by_date", True) is True)
         self.var_title.set(conf.get("log_title", False) == 'True' or conf.get("log_title", False) is True)
@@ -743,6 +847,7 @@ class ModernUI(ctk.CTk):
             "filename": self.entry_name.get(),
             "save_dir": p,
             "w": self.winfo_width(), "h": self.winfo_height(),
+            "max_size": self.entry_size.get(),
             "save_by_date": self.var_save_date.get(),
             "save_mode": "folder" if self.combo_mode.get() == "Folder" else "docx",
             "log_title": self.var_title.get(),
@@ -802,7 +907,8 @@ class ModernUI(ctk.CTk):
             "save_mode": "folder" if self.combo_mode.get() == "Folder" else "docx",
             "log_title": self.var_title.get(), "append_num": self.var_num.get(),
             "auto_copy": self.var_auto.get(), "copy_files": self.var_copy_files.get(),
-            "copy_image": self.var_copy_img.get(), "max_size": "0"
+            "copy_image": self.var_copy_img.get(),
+            "max_size": self.entry_size.get().strip()
         }
 
         sess = ScreenshotSession(cfg, self.handler_queue)
@@ -860,13 +966,16 @@ class ModernUI(ctk.CTk):
     def on_list_select(self, event):
         sel = self.tree.selection()
         if not sel:
-            self.btn_resume.configure(state="disabled", fg_color="gray")
-            self.btn_save.configure(state="disabled", fg_color="gray")
-            self.btn_discard.configure(state="disabled", fg_color="gray")
+            self.btn_resume.configure(state="disabled", fg_color=self.ui_colors["accent_disabled"])
+            self.btn_save.configure(state="disabled", fg_color=self.ui_colors["success_disabled"])
+            self.btn_discard.configure(state="disabled", fg_color=self.ui_colors["danger_disabled"])
+            self.btn_split.configure(state="disabled")
+            self.btn_copy.configure(state="disabled")
             return
 
         key = sel[0]
-        status = self.instance_sessions[key].status
+        sess = self.instance_sessions[key]
+        status = sess.status
 
         self.btn_save.configure(state="normal", fg_color=self.ui_colors["success"],
                                 text_color=self.ui_colors["btn_text"])
@@ -877,7 +986,14 @@ class ModernUI(ctk.CTk):
             self.btn_resume.configure(state="normal", fg_color=self.ui_colors["accent"],
                                       text_color=self.ui_colors["btn_text"])
         else:
-            self.btn_resume.configure(state="disabled", fg_color="gray")
+            self.btn_resume.configure(state="disabled", fg_color=self.ui_colors["accent_disabled"])
+
+        if sess.config['save_mode'] == "folder":
+            self.btn_split.configure(state='disabled')
+        else:
+            self.btn_split.configure(state='normal', text_color=self.ui_colors["btn_text"])
+
+        self.btn_copy.configure(state='normal', text_color=self.ui_colors["btn_text"])
 
     def update_ui_state(self):
         if self.main_active_key:
@@ -919,6 +1035,8 @@ class ModernUI(ctk.CTk):
                     if key in self.instance_sessions:
                         self.tree.set(key, "count", count)
                         if key == self.main_active_key:
+                            self.lbl_status.configure(text=f"Saved #{count} ({size})",
+                                                      text_color=self.ui_colors["success"])
                             self.show_notification(f"Saved #{count}", size)
                 elif action == "UNDO":
                     key, count, size = msg[1], msg[2], msg[3]
@@ -942,7 +1060,7 @@ class ModernUI(ctk.CTk):
         if self.instance_sessions:
             if not messagebox.askokcancel("Quit", "Open sessions will be saved. Quit?"): return
         self.save_defaults()
-        self.hotkey_manager.stop()
+        if self.hotkey_manager: self.hotkey_manager.stop()
         for k, s in self.instance_sessions.items(): s.cleanup()
         self.destroy()
 
