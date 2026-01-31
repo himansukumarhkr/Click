@@ -1,18 +1,7 @@
-# 1. Create requirements.txt (if you haven't already)
-# Paste these lines into the file:
-# customtkinter
-# python-docx
-# pillow
-# pywin32
-# packaging
-# nuitka
-# zstandard
-
-# 2. Add all files to Git
-git add Click!.py app_icon.ico .gitlab-ci.yml requirements.txt config.toon
-
-# 3. Commit
-git commit -m "Trigger build on Windows Runner"
-
-# 4. Push to GitLab (This starts the pipeline!)
-git push origin main
+customtkinter
+python-docx
+pillow
+pywin32
+packaging
+nuitka
+zstandard
