@@ -2,9 +2,7 @@ stages:
   - build
 
 variables:
-  # Prevents Nuitka from hanging on download prompts
   NUITKA_assume_yes_for_downloads: "yes"
-  # Fixes potential SSL issues during pip installs on some runners
   PYTHONHTTPSVERIFY: "0"
 
 build_job:
@@ -13,38 +11,25 @@ build_job:
     - saas-windows-medium-amd64
 
   script:
-    - echo "Step 1: Installing Python 3.12 via Chocolatey..."
-    - "choco install python --version=3.12.0 -y --allow-downgrade --no-progress"
+    - 'echo "Step 1: Installing Python 3.12 via Chocolatey..."'
+    - 'choco install python --version=3.12.0 -y --allow-downgrade --no-progress'
 
-    - echo "Step 2: Refreshing Environment Paths..."
-    - "$env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')"
+    - 'echo "Step 2: Refreshing Environment Paths..."'
+    - '$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")'
 
-    - echo "Step 3: Installing Dependencies..."
-    - "python -m pip install --upgrade pip"
-    - "python -m pip install nuitka customtkinter Pillow python-docx zstandard"
+    - 'echo "Step 3: Installing Dependencies..."'
+    - 'python -m pip install --upgrade pip'
+    - 'python -m pip install nuitka customtkinter Pillow python-docx zstandard'
 
-    - echo "Step 4: Building Standalone Executable with Nuitka..."
-    # We use '>' to handle the long multi-line command cleanly in YAML
-    - >
-      python -m nuitka 
-      --standalone 
-      --onefile 
-      --windows-console-mode=disable 
-      --enable-plugin=tk-inter 
-      --include-package=customtkinter
-      --assume-yes-for-downloads 
-      --windows-icon-from-ico=app_icon.ico 
-      --include-data-file=app_icon.ico=app_icon.ico
-      --onefile-tempdir-spec='%TEMP%/Click_Tool_%PID%'
-      'Click!.py'
+    - 'echo "Step 4: Building Standalone Executable..."'
+    # Written as one single-quoted line to prevent YAML parsing errors
+    - 'python -m nuitka --standalone --onefile --windows-console-mode=disable --enable-plugin=tk-inter --include-package=customtkinter --assume-yes-for-downloads --windows-icon-from-ico=app_icon.ico --include-data-file=app_icon.ico=app_icon.ico --onefile-tempdir-spec="%TEMP%/Click_Tool_%PID%" "Click!.py"'
 
   artifacts:
-    # This name appears when you download the zip from GitLab
     name: "Click_Tool_Freeware_Pack"
     paths:
       - "Click!.exe"
       - "LICENSE.md"
       - "README.md"
       - "Click! - Guide.pdf"
-    # Ensures the download link remains active for your users
     expire_in: never
