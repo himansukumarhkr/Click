@@ -9,22 +9,31 @@ build_job:
     - "echo 'Step 1: Setting up Python 3.12.0...'"
     - "choco install python --version=3.12.0 -y --allow-downgrade --no-progress"
 
-    - "echo 'Step 2: Refreshing Path...'"
+    - "echo 'Step 2: Refreshing Environment Path...'"
     - "$env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')"
 
-    - "echo 'Step 3: Installing Libraries (CRITICAL)...'"
+    - "echo 'Step 3: Installing Dependencies...'"
     - "python -m pip install --upgrade pip"
     - "python -m pip install nuitka"
-    # ADD EVERY LIBRARY YOU IMPORT IN YOUR SCRIPT HERE:
-    # Example: - "python -m pip install Pillow pynput mss"
-    - "python -m pip install Pillow"
+    # These are the exact libraries matching your imports:
+    - "python -m pip install customtkinter Pillow python-docx"
 
     - "echo 'Step 4: Compiling Click!.py...'"
-    # Added --follow-imports to ensure it doesn't leave anything behind
-    - 'python -m nuitka --standalone --onefile --windows-console-mode=disable --enable-plugin=tk-inter --follow-imports --assume-yes-for-downloads "Click!.py"'
+    # --enable-plugin=tk-inter: Necessary for CustomTkinter/Tkinter
+    # --windows-console-mode=disable: Hides the black CMD window
+    # --assume-yes-for-downloads: Auto-downloads MinGW and Dependency Walker
+    # --include-data-file: Bundles your icon so it doesn't crash on startup
+    - >
+      python -m nuitka 
+      --standalone 
+      --onefile 
+      --windows-console-mode=disable 
+      --enable-plugin=tk-inter 
+      --assume-yes-for-downloads 
+      --include-data-file=app_icon.ico=app_icon.ico
+      "Click!.py"
 
   artifacts:
     paths:
-      - "Click!.dist/Click!.exe"
-      - "*.exe"
+      - "Click!.exe"
     expire_in: 1 week
