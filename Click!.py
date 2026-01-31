@@ -386,19 +386,17 @@ class ScreenshotSession:
                 self.doc.add_picture(img_path, width=Inches(6))
                 self.doc.add_paragraph("-" * 50)
 
-                self.unsaved_changes += 1
-                if self.unsaved_changes >= 3:
-                    try:
-                        self.doc.save(self.current_filename)
-                        self.last_known_size_str = self.get_formatted_size(self.current_filename)
-                        self.file_locked_warning_shown = False
-                        self.unsaved_changes = 0
-                    except PermissionError:
-                        if not self.file_locked_warning_shown:
-                            self.gui_queue.put(("WARNING", "File Locked", "Close Word to save"))
-                            self.file_locked_warning_shown = True
-                else:
-                    self.last_known_size_str = "Saving..."
+                # FIX: Save Immediately (Removed the "Wait for 3 screenshots" check)
+                try:
+                    self.doc.save(self.current_filename)
+                    self.last_known_size_str = self.get_formatted_size(self.current_filename)
+                    self.file_locked_warning_shown = False
+                    self.unsaved_changes = 0
+                except PermissionError:
+                    if not self.file_locked_warning_shown:
+                        self.gui_queue.put(("WARNING", "File Locked", "Close Word to save"))
+                        self.file_locked_warning_shown = True
+                    self.last_known_size_str = "File Locked"
 
             self.gui_queue.put(("UPDATE_SESSION", self.session_id, self.session_count, self.last_known_size_str))
         except Exception as e:
