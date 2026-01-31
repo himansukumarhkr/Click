@@ -6,25 +6,21 @@ build_job:
   tags:
     - saas-windows-medium-amd64
   script:
-    - "echo 'Step 1: Downgrading Python to 3.12.0...'"
+    - "echo 'Step 1: Setting up Python 3.12.0...'"
     - "choco install python --version=3.12.0 -y --allow-downgrade --no-progress"
 
     - "echo 'Step 2: Refreshing Environment Path...'"
     - "$env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')"
 
-    - "echo 'Step 3: Installing Requirements...'"
+    - "echo 'Step 3: Installing Libraries...'"
     - "python -m pip install --upgrade pip"
     - "python -m pip install nuitka"
-    # Matches your imports: customtkinter, Pillow (PIL), and python-docx
     - "python -m pip install customtkinter Pillow python-docx"
 
-    - "echo 'Step 4: Verifying files...'"
-    - "dir"
-
-    - "echo 'Step 5: Compiling Click!.py...'"
+    - "echo 'Step 4: Compiling Click!.py...'"
     # --windows-icon-from-ico: Sets the icon for the .exe file itself
-    # --include-data-file: Bundles the icon so the Python code can use it for the window
-    # --windows-console-mode=disable: Removes the black background window
+    # --include-data-file: Extracts the icon into the temp folder at runtime
+    # --onefile-tempdir-spec: Forces Nuitka to use a temp folder your code can find via "."
     - >
       python -m nuitka 
       --standalone 
@@ -34,6 +30,7 @@ build_job:
       --assume-yes-for-downloads 
       --windows-icon-from-ico=app_icon.ico 
       --include-data-file=app_icon.ico=app_icon.ico 
+      --onefile-tempdir-spec="%TEMP%/Click_%PID%"
       "Click!.py"
 
   artifacts:
