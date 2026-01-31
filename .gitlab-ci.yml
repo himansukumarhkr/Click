@@ -10,7 +10,6 @@ build_job:
     - "choco install python --version=3.12.0 -y --allow-downgrade --no-progress"
 
     - "echo 'Step 2: Updating Path...'"
-    # This command refreshes the path so the runner sees the new Python immediately
     - "$env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')"
 
     - "echo 'Step 3: Installing Nuitka...'"
@@ -18,10 +17,10 @@ build_job:
     - "python -m pip install nuitka"
 
     - "echo 'Step 4: Running Nuitka Build...'"
-    # Replace main.py with your script name
-    - "python -m nuitka --standalone --onefile main.py"
+    # Wrapped filename in double quotes to handle the '!' character
+    - 'python -m nuitka --standalone --onefile --windows-disable-console "Click!.py"'
 
   artifacts:
     paths:
-      - "*.exe"
+      - "Click!.exe"
     expire_in: 1 week
