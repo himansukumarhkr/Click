@@ -2,30 +2,27 @@ stages:
   - build
 
 variables:
-  # Nuitka flags to ensure it doesn't wait for user input
   NUITKA_assume_yes_for_downloads: "yes"
   PYTHONHTTPSVERIFY: "0"
 
 build_job:
   stage: build
-  # Use the SaaS Windows tag
   tags:
     - saas-windows-medium-amd64
 
   before_script:
     - echo "Step 1: Installing Python via Chocolatey..."
-    - choco install python --version=3.12.0 -y
-    # Refreshing path so the runner sees the new Python installation
-    - $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+    - 'choco install python --version=3.12.0 -y'
+    # Use quotes to prevent the [System.Environment] brackets from breaking the YAML
+    - '$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")'
 
     - echo "Step 2: Installing Python dependencies..."
-    - python -m pip install --upgrade pip
-    - python -m pip install -r requirements.txt --trusted-host pypi.org --trusted-host files.pythonhosted.org
+    - 'python -m pip install --upgrade pip'
+    - 'python -m pip install -r requirements.txt --trusted-host pypi.org --trusted-host files.pythonhosted.org'
 
   script:
     - echo "Step 3: Building Exe with Nuitka..."
-    # On SaaS, we call 'python -m nuitka' directly
-    - python -m nuitka --standalone --assume-yes-for-downloads --onefile --enable-plugin=tk-inter --include-package-data=customtkinter --include-package=docx --include-package=PIL --windows-console-mode=disable --windows-icon-from-ico="app_icon.ico" --include-data-file="app_icon.ico=app_icon.ico" --output-filename="Click!.exe" "Click!.py"
+    - 'python -m nuitka --standalone --assume-yes-for-downloads --onefile --enable-plugin=tk-inter --include-package-data=customtkinter --include-package=docx --include-package=PIL --windows-console-mode=disable --windows-icon-from-ico="app_icon.ico" --include-data-file="app_icon.ico=app_icon.ico" --output-filename="Click!.exe" "Click!.py"'
 
   artifacts:
     name: "SaaS_Build_Click_Tool"
