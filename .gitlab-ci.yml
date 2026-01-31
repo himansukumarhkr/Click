@@ -1,31 +1,37 @@
 stages:
   - build
 
-variables:
-  NUITKA_assume_yes_for_downloads: "yes"
-  PYTHONHTTPSVERIFY: "0"
-
 build_job:
   stage: build
   tags:
-    - saas-windows-medium-amd64
-
-  before_script:
-    - 'echo "Step 1: Installing Python via Chocolatey..."'
-    - 'choco install python --version=3.12.0 -y'
-    # The quotes here are critical to hide the [ ] and : from the YAML parser
-    - '$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")'
-
-    - 'echo "Step 2: Installing Python dependencies..."'
-    - 'python -m pip install --upgrade pip'
-    - 'python -m pip install -r requirements.txt --trusted-host pypi.org --trusted-host files.pythonhosted.org'
-
+    - gitlab-com-saas-windows-medium-amd64
   script:
-    - 'echo "Step 3: Building Exe with Nuitka..."'
-    - 'python -m nuitka --standalone --assume-yes-for-downloads --onefile --enable-plugin=tk-inter --include-package-data=customtkinter --include-package=docx --include-package=PIL --windows-console-mode=disable --windows-icon-from-ico="app_icon.ico" --include-data-file="app_icon.ico=app_icon.ico" --output-filename="Click!.exe" "Click!.py"'
+    - echo "Step 1: Cleaning up existing Python versions..."
+    # We use --force to ensure we clear out the pre-installed 3.13
+    - choco uninstall python python3 -y --continue-on-error
+
+    - echo "Step 2: Installing Python 3.12.0..."
+    - choco install python --version=3.12.0 -y --allow-downgrade --no-progress
+
+    - echo "Step 3: Refreshing Environment Variables..."
+    # This is critical on Windows to update the PATH in the current session
+    - $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+
+    - echo "Step 4: Verifying Python Version..."
+    - python --version
+    - where.exe python
+
+    - echo "Step 5: Installing Nuitka and dependencies..."
+    - python -m pip install --upgrade pip
+    - python -m pip install nuitka
+    # Add your project dependencies here, e.g.:
+    # - python -m pip install -r requirements.txt
+
+    - echo "Step 6: Running Nuitka Build..."
+    # Using 'python -m nuitka' is safer than calling 'nuitka' directly
+    - python -m nuitka --standalone --onefile your_script.py
 
   artifacts:
-    name: "SaaS_Build_Click_Tool"
     paths:
-      - "Click!.exe"
+      - "*.exe"
     expire_in: 1 week
