@@ -11,7 +11,7 @@ variables:
 build_job:
   stage: build
   tags:
-    - windows
+    - Windows-OwnLaptop
 
   before_script:
     - echo "Installing dependencies..."
