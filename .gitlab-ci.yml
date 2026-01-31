@@ -12,17 +12,19 @@ build_job:
     - "echo 'Step 2: Refreshing Path...'"
     - "$env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')"
 
-    - "echo 'Step 3: Installing Nuitka and dependencies...'"
+    - "echo 'Step 3: Installing Libraries (CRITICAL)...'"
     - "python -m pip install --upgrade pip"
     - "python -m pip install nuitka"
-    # Ensure any libraries your script uses (like Pillow or pynput) are installed here
-    # - "python -m pip install Pillow pynput"
+    # ADD EVERY LIBRARY YOU IMPORT IN YOUR SCRIPT HERE:
+    # Example: - "python -m pip install Pillow pynput mss"
+    - "python -m pip install Pillow"
 
     - "echo 'Step 4: Compiling Click!.py...'"
-    # --assume-yes-for-downloads handles the prompt for depends.exe (Dependency Walker)
-    - 'python -m nuitka --standalone --onefile --windows-console-mode=disable --enable-plugin=tk-inter --assume-yes-for-downloads "Click!.py"'
+    # Added --follow-imports to ensure it doesn't leave anything behind
+    - 'python -m nuitka --standalone --onefile --windows-console-mode=disable --enable-plugin=tk-inter --follow-imports --assume-yes-for-downloads "Click!.py"'
 
   artifacts:
     paths:
-      - "Click!.exe"
+      - "Click!.dist/Click!.exe"
+      - "*.exe"
     expire_in: 1 week
