@@ -280,24 +280,12 @@ v1.0.0 (31 January 2026) ✨
 
 ---
 
-## 🎉 Made in Mumbai, India 🇮🇳
+## 🎉 Made in India!
 
 **Developed by:** Himansu Kumar  
 **Release Date:** 31 January 2026  
 **Technologies:** Python, CustomTkinter, Nuitka, Windows API  
 **License:** Proprietary Freeware
-
-```
-       ,     ,
-      (\____/)
-       (_oo_)
-         (O)
-       __||__    \)
-    []/______\[] /
-    / \______/ \/
-   /    /__\ 
-  /\   /____\ 
-```
 
 ---
 
