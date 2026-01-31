@@ -1,0 +1,18 @@
+stages:
+  - build
+
+variables:
+  PYTHONHTTPSVERIFY: "0"
+  NUITKA_assume_yes_for_downloads: "yes"
+
+build_job:
+  stage: build
+  tags:
+    - Windows-OwnLaptop  # Must match the tag you gave your runner!
+  script:
+    - pip install -r requirements.txt --trusted-host pypi.org --trusted-host files.pythonhosted.org
+    - nuitka --standalone --onefile --enable-plugin=tk-inter --include-package-data=customtkinter --include-package=docx --include-package=PIL --windows-console-mode=disable --windows-icon-from-ico="app_icon.ico" --include-data-file="app_icon.ico=app_icon.ico" --output-filename="Click.exe" click.py
+  artifacts:
+    paths:
+      - Click.exe
+    expire_in: 1 week
