@@ -14,26 +14,28 @@ build_job:
 
     - "echo 'Step 3: Installing Libraries...'"
     - "python -m pip install --upgrade pip"
-    - "python -m pip install nuitka"
-    - "python -m pip install customtkinter Pillow python-docx"
+    - "python -m pip install nuitka customtkinter Pillow python-docx"
 
     - "echo 'Step 4: Compiling Click!.py...'"
-    # --windows-icon-from-ico: Sets the icon for the .exe file itself
-    # --include-data-file: Extracts the icon into the temp folder at runtime
-    # --onefile-tempdir-spec: Forces Nuitka to use a temp folder your code can find via "."
+    # --include-package=customtkinter: Forces Nuitka to grab the UI theme files
+    # --windows-icon-from-ico: Fixes the .exe icon in folders
+    # --include-data-file=app_icon.ico=./: Places icon where CTK can find it
     - >
       python -m nuitka 
       --standalone 
       --onefile 
       --windows-console-mode=disable 
       --enable-plugin=tk-inter 
+      --include-package=customtkinter
       --assume-yes-for-downloads 
       --windows-icon-from-ico=app_icon.ico 
-      --include-data-file=app_icon.ico=app_icon.ico 
+      --include-data-file=app_icon.ico=./
+      --include-data-file="Click! - Guide.pdf"=./
       --onefile-tempdir-spec="%TEMP%/Click_%PID%"
       "Click!.py"
 
   artifacts:
     paths:
       - "Click!.exe"
-    expire_in: 1 week
+      - "Click! - Guide.pdf"
+    expire_in: never
