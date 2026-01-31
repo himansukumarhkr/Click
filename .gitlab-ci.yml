@@ -4,26 +4,21 @@ stages:
 build_job:
   stage: build
   tags:
-    - gitlab-com-saas-windows-medium-amd64
+    - saas-windows-medium-amd64
   script:
-    - "echo 'Step 1: Cleaning up existing Python versions...'"
-    - "choco uninstall python python3 -y --continue-on-error"
-
-    - "echo 'Step 2: Installing Python 3.12.0...'"
+    - "echo 'Step 1: Downgrading Python to 3.12.0...'"
     - "choco install python --version=3.12.0 -y --allow-downgrade --no-progress"
 
-    - "echo 'Step 3: Updating Environment Path...'"
-    # We use double quotes around the whole command to prevent YAML syntax errors
+    - "echo 'Step 2: Updating Path...'"
+    # This command refreshes the path so the runner sees the new Python immediately
     - "$env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')"
 
-    - "echo 'Step 4: Verifying Python Version...'"
-    - "python --version"
-
-    - "echo 'Step 5: Installing Nuitka...'"
+    - "echo 'Step 3: Installing Nuitka...'"
     - "python -m pip install --upgrade pip"
     - "python -m pip install nuitka"
 
-    - "echo 'Step 6: Running Nuitka Build...'"
+    - "echo 'Step 4: Running Nuitka Build...'"
+    # Replace main.py with your script name
     - "python -m nuitka --standalone --onefile main.py"
 
   artifacts:
