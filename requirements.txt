@@ -1,7 +1,7 @@
-customtkinter
-python-docx
-pillow
-pywin32
-packaging
-nuitka
-zstandard
+customtkinter==5.2.2
+python-docx==1.2.0
+pillow==12.1.0
+pywin32==311
+packaging==26.0
+nuitka==2.8.10
+zstandard==0.25.0

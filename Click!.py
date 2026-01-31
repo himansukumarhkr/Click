@@ -23,15 +23,15 @@ import re
 # ==========================================
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for Nuitka """
-    # Nuitka sets sys.frozen when compiled. It extracts data files to the same
-    # directory where the internal Python script runs.
+    # Nuitka extracts data files to the same directory as the EXE in onefile mode
     if hasattr(sys, 'frozen'):
         base_path = os.path.dirname(sys.executable)
     else:
         base_path = os.path.abspath(".")
 
-    # Check if the file exists in the executable path, if not, check the script path
     full_path = os.path.join(base_path, relative_path)
+
+    # Fallback for dev environment or local runs
     if not os.path.exists(full_path):
         base_path = os.path.dirname(os.path.abspath(__file__))
         full_path = os.path.join(base_path, relative_path)
@@ -847,15 +847,19 @@ class ModernUI(ctk.CTk):
         self.notif_label.pack(expand=True, padx=20, pady=10)
 
         self.load_defaults()
+
+        # --- BRANDING FIX ---
+        # Define the path and apply icon BEFORE starting background threads
+        self.icon_path = resource_path("app_icon.ico")
+        self._apply_branding()
+        # Overrides CustomTkinter's default blue logo after it finishes initializing
+        self.after(200, self._apply_branding)
+
+        # Now start the background logic
         self.hotkey_manager = HotkeyListener(self.on_hotkey_capture, self.on_hotkey_undo, self.on_hotkey_error)
         self.hotkey_manager.start()
         self.check_queue()
         self.protocol("WM_DELETE_WINDOW", self.on_app_close)
-        # --- PRODUCTION ICON LOGIC ---
-        self.icon_path = resource_path("app_icon.ico")
-        self._apply_branding()
-        # Overrides CustomTkinter's default blue logo after it finishes initializing
-        self.after(150, self._apply_branding)
 
     def _apply_branding(self):
         """ Internal method to force apply the window icon """
@@ -890,6 +894,19 @@ class ModernUI(ctk.CTk):
 
         idx = 1 if mode == "Dark" else 0
         self.main_area.update_bg_color(self.ui_colors["bg_main"][idx])
+
+    def _apply_branding(self):
+        """ Force apply the window icon to override CustomTkinter default """
+        if os.path.exists(self.icon_path):
+            try:
+                self.iconbitmap(self.icon_path)
+                self.wm_iconbitmap(self.icon_path)
+            except Exception:
+                try:
+                    img = tk.PhotoImage(file=self.icon_path)
+                    self.iconphoto(False, img)
+                except:
+                    pass
 
     def update_tree_style(self, mode):
         if mode == "Dark":
