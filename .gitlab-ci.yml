@@ -21,9 +21,9 @@ build_job:
     - 'python -m pip install --upgrade pip'
     - 'python -m pip install nuitka customtkinter Pillow python-docx zstandard'
 
-    - 'echo "Step 4: Building Standalone Executable..."'
-    # Written as one single-quoted line to prevent YAML parsing errors
-    - 'python -m nuitka --standalone --onefile --windows-console-mode=disable --enable-plugin=tk-inter --include-package=customtkinter --assume-yes-for-downloads --windows-icon-from-ico=app_icon.ico --include-data-file=app_icon.ico=app_icon.ico --onefile-tempdir-spec="%TEMP%/Click_Tool_%PID%" "Click!.py"'
+    - 'echo "Step 4: Building Standalone Executable with Metadata..."'
+    # Updated command with professional metadata
+    - 'python -m nuitka --standalone --onefile --windows-console-mode=disable --enable-plugin=tk-inter --include-package=customtkinter --assume-yes-for-downloads --windows-icon-from-ico=app_icon.ico --include-data-file=app_icon.ico=app_icon.ico --onefile-tempdir-spec="%TEMP%/Click_Tool_%PID%" --windows-company-name="Himansu Kumar" --windows-product-name="Click! Screenshot Tool" --windows-file-version="1.0.0.0" --windows-product-version="1.0.0.0" --windows-file-description="Professional Screenshot Automation Utility" "Click!.py"'
 
   artifacts:
     name: "Click_Tool_Freeware_Pack"
