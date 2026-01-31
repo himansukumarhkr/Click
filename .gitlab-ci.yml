@@ -2,33 +2,25 @@ stages:
   - build
 
 variables:
-  # 1. Skip SSL checks to avoid corporate firewall issues
   PYTHONHTTPSVERIFY: "0"
-  PIP_TRUSTED_HOST: "pypi.org pypi.python.org files.pythonhosted.org"
-
-  # 2. Tell Nuitka to say "Yes" to downloads (C-compiler, etc.)
   NUITKA_assume_yes_for_downloads: "yes"
-
-  # 3. PROXY SETTINGS (Uncomment if needed later, but try without first)
-  # HTTP_PROXY: "http://YourUser:YourPass@your-proxy:8080"
-  # HTTPS_PROXY: "http://YourUser:YourPass@your-proxy:8080"
+  # YOUR SPECIFIC PYTHON PATH (Forward slashes are safer in YAML)
+  PY_PATH: "C:/Users/himan/AppData/Local/Programs/Python/Python312/python.exe"
 
 build_job:
   stage: build
-
-  # CRITICAL: This must match the tag in your GitLab Runner settings
   tags:
     - Windows-OwnLaptop
 
   before_script:
     - echo "Installing dependencies..."
-    # FIX: Use 'python -m pip' to avoid "pip not found" errors
-    - python -m pip install -r requirements.txt --trusted-host pypi.org --trusted-host files.pythonhosted.org
+    # We use the full path variable '& $env:PY_PATH' to call python
+    - '& $env:PY_PATH -m pip install -r requirements.txt --trusted-host pypi.org --trusted-host files.pythonhosted.org'
 
   script:
     - echo "Building Exe with Nuitka..."
-    # FIX: Use 'python -m nuitka' to ensure we run the module correctly
-    - python -m nuitka --standalone --onefile --enable-plugin=tk-inter --include-package-data=customtkinter --include-package=docx --include-package=PIL --windows-console-mode=disable --windows-icon-from-ico="app_icon.ico" --include-data-file="app_icon.ico=app_icon.ico" --output-filename="Click.exe" click.py
+    # Call Nuitka using the full python path
+    - '& $env:PY_PATH -m nuitka --standalone --onefile --enable-plugin=tk-inter --include-package-data=customtkinter --include-package=docx --include-package=PIL --windows-console-mode=disable --windows-icon-from-ico="app_icon.ico" --include-data-file="app_icon.ico=app_icon.ico" --output-filename="Click.exe" click.py'
 
   artifacts:
     name: "Click_Tool_Build"
