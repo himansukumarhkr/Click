@@ -3,6 +3,7 @@ from PIL import Image, ImageGrab
 from docx import Document
 from docx.shared import Inches
 import os
+import sys
 import datetime
 import tkinter as tk
 from tkinter import filedialog, ttk, messagebox
@@ -16,6 +17,19 @@ import time
 import io
 import re
 
+
+# ==========================================
+#        NUITKA RESOURCE HELPER
+# ==========================================
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for Nuitka/PyInstaller """
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
+
 # ==========================================
 #        DPI AWARENESS
 # ==========================================
@@ -28,7 +42,7 @@ except Exception:
         pass
 
 # ==========================================
-#        WINDOWS API
+#        WINDOWS API DEFINITIONS
 # ==========================================
 kernel32 = ctypes.windll.kernel32
 user32 = ctypes.windll.user32
@@ -46,46 +60,52 @@ GMEM_FIXED = 0x0000
 GMEM_ZEROINIT = 0x0040
 GPTR = GMEM_FIXED | GMEM_ZEROINIT
 
-kernel32.GlobalAlloc.argtypes = [UINT, SIZE_T];
+kernel32.GlobalAlloc.argtypes = [UINT, SIZE_T]
 kernel32.GlobalAlloc.restype = HGLOBAL
-kernel32.GlobalLock.argtypes = [HGLOBAL];
+kernel32.GlobalLock.argtypes = [HGLOBAL]
 kernel32.GlobalLock.restype = LPVOID
-kernel32.GlobalUnlock.argtypes = [HGLOBAL];
+kernel32.GlobalUnlock.argtypes = [HGLOBAL]
 kernel32.GlobalUnlock.restype = BOOL
-kernel32.GlobalFree.argtypes = [HGLOBAL];
+kernel32.GlobalFree.argtypes = [HGLOBAL]
 kernel32.GlobalFree.restype = HGLOBAL
 kernel32.GetCurrentThreadId.restype = DWORD
 
-user32.OpenClipboard.argtypes = [HWND];
+user32.OpenClipboard.argtypes = [HWND]
 user32.OpenClipboard.restype = BOOL
-user32.EmptyClipboard.argtypes = [];
+user32.EmptyClipboard.argtypes = []
 user32.EmptyClipboard.restype = BOOL
-user32.SetClipboardData.argtypes = [UINT, HANDLE];
+user32.SetClipboardData.argtypes = [UINT, HANDLE]
 user32.SetClipboardData.restype = HANDLE
-user32.CloseClipboard.argtypes = [];
+user32.CloseClipboard.argtypes = []
 user32.CloseClipboard.restype = BOOL
+user32.MapVirtualKeyW.argtypes = [UINT, UINT]
+user32.MapVirtualKeyW.restype = UINT
 
-user32.RegisterHotKey.argtypes = [HWND, ctypes.c_int, UINT, UINT];
+user32.RegisterHotKey.argtypes = [HWND, ctypes.c_int, UINT, UINT]
 user32.RegisterHotKey.restype = BOOL
-user32.UnregisterHotKey.argtypes = [HWND, ctypes.c_int];
+user32.UnregisterHotKey.argtypes = [HWND, ctypes.c_int]
 user32.UnregisterHotKey.restype = BOOL
-user32.GetMessageW.argtypes = [ctypes.POINTER(wintypes.MSG), HWND, UINT, UINT];
+user32.GetMessageW.argtypes = [ctypes.POINTER(wintypes.MSG), HWND, UINT, UINT]
 user32.GetMessageW.restype = BOOL
 user32.TranslateMessage.argtypes = [ctypes.POINTER(wintypes.MSG)]
 user32.DispatchMessageW.argtypes = [ctypes.POINTER(wintypes.MSG)]
-user32.PostThreadMessageW.argtypes = [DWORD, UINT, wintypes.WPARAM, wintypes.LPARAM];
+user32.PostThreadMessageW.argtypes = [DWORD, UINT, wintypes.WPARAM, wintypes.LPARAM]
 user32.PostThreadMessageW.restype = BOOL
 
 MOD_ALT = 0x0001
 MOD_CONTROL = 0x0002
-VK_OEM_3 = 0xC0
+
+# FIX: Dynamic mapping for Tilde (~) key to support non-US keyboards
+VK_OEM_3 = user32.MapVirtualKeyW(0x29, 1)
+if VK_OEM_3 == 0: VK_OEM_3 = 0xC0  # Fallback to US Standard
+
 WM_HOTKEY = 0x0312
 WM_USER = 0x0400
 WM_STOP_LISTENER = WM_USER + 1
 
 
 # ==========================================
-#        CUSTOM SCROLL FRAME
+#        UI COMPONENTS
 # ==========================================
 class AutoScrollFrame(ctk.CTkFrame):
     def __init__(self, master, bg_color_hex, **kwargs):
@@ -121,18 +141,11 @@ class AutoScrollFrame(ctk.CTkFrame):
     def _toggle_scrollbars(self):
         bbox = self.canvas.bbox("all")
         if not bbox: return
-
-        scroll_h = bbox[3] - bbox[1]
-        scroll_w = bbox[2] - bbox[0]
-        canvas_h = self.canvas.winfo_height()
-        canvas_w = self.canvas.winfo_width()
-
-        if scroll_h > canvas_h:
+        if (bbox[3] - bbox[1]) > self.canvas.winfo_height():
             self.vsb.grid(row=0, column=1, sticky="ns")
         else:
             self.vsb.grid_forget()
-
-        if scroll_w > canvas_w:
+        if (bbox[2] - bbox[0]) > self.canvas.winfo_width():
             self.hsb.grid(row=1, column=0, sticky="ew")
         else:
             self.hsb.grid_forget()
@@ -152,9 +165,8 @@ class AutoScrollFrame(ctk.CTkFrame):
 
 
 # ==========================================
-#            LOGIC CLASSES
+#        LOGIC CORE
 # ==========================================
-
 class HotkeyListener:
     def __init__(self, callback_capture, callback_undo, callback_error):
         self.callback_capture = callback_capture
@@ -202,21 +214,26 @@ class ScreenshotSession:
     def __init__(self, config_data, callback_queue):
         self.config = config_data
         self.gui_queue = callback_queue
+
         self.base_name_no_ext = ""
         self.current_filename = ""
         self.session_count = 0
         self.max_size_bytes = 0
-        self.current_part = 1
-        self.is_split_mode = False
         self.image_paths = []
         self.temp_dir = None
         self.doc = None
-        self.save_queue = queue.Queue()
-        self.worker_thread = None
-        self.file_locked_warning_shown = False
-        self.last_known_size_str = "0 KB"
         self.running = True
         self.status = "Active"
+        self.unsaved_changes = 0
+
+        self.save_queue = queue.Queue()
+        self.clipboard_queue = queue.Queue()
+        self.worker_thread = None
+        self.clipboard_thread = None
+
+        self.file_locked_warning_shown = False
+        self.last_known_size_str = "0 KB"
+
         self._initialize()
         self.session_id = self.current_filename
 
@@ -240,7 +257,7 @@ class ScreenshotSession:
                 while True:
                     new_path = f"{full_path}_{c}"
                     if not os.path.exists(new_path):
-                        self.current_filename = new_path;
+                        self.current_filename = new_path
                         break
                     c += 1
             self.base_name_no_ext = os.path.basename(self.current_filename)
@@ -251,7 +268,7 @@ class ScreenshotSession:
                 f_path = os.path.join(full_dir, name + ".docx")
                 if not os.path.exists(f_path):
                     self.current_filename = f_path
-                    self.base_name_no_ext = name;
+                    self.base_name_no_ext = name
                     break
                 c += 1
 
@@ -262,6 +279,7 @@ class ScreenshotSession:
             self.max_size_bytes = 0
 
         self.temp_dir = tempfile.mkdtemp(prefix="Click_")
+
         if self.config['save_mode'] == 'folder':
             if not os.path.exists(self.current_filename): os.makedirs(self.current_filename)
         else:
@@ -270,15 +288,25 @@ class ScreenshotSession:
                 self.doc.save(self.current_filename)
             except:
                 pass
-        self.start_worker()
 
-    def start_worker(self):
+        self.start_threads()
+
+    def start_threads(self):
         if self.worker_thread is None or not self.worker_thread.is_alive():
             self.worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
             self.worker_thread.start()
 
+        if self.clipboard_thread is None or not self.clipboard_thread.is_alive():
+            self.clipboard_thread = threading.Thread(target=self._clipboard_loop, daemon=True)
+            self.clipboard_thread.start()
+
     def stop_worker(self):
         self.running = False
+        if self.doc and self.unsaved_changes > 0:
+            try:
+                self.doc.save(self.current_filename)
+            except:
+                pass
 
     def capture(self):
         if not self.running: return
@@ -286,12 +314,16 @@ class ScreenshotSession:
             img = ImageGrab.grab(all_screens=True)
         except:
             return
+
         self.session_count += 1
         window_title = self.get_cleaned_window_title() if self.config['log_title'] else None
+
         self.gui_queue.put(("NOTIFY", self.session_id, self.session_count, self.last_known_size_str))
+
         if self.config['auto_copy']:
             path = os.path.join(self.temp_dir, f"clip_{self.session_count}.jpg")
-            threading.Thread(target=self._clipboard_worker, args=(img, path), daemon=True).start()
+            self.clipboard_queue.put((img, path))
+
         self.save_queue.put((img, self.session_count, window_title))
 
     def undo(self):
@@ -310,6 +342,7 @@ class ScreenshotSession:
                 except queue.Empty:
                     if not self.running and self.save_queue.empty(): break
                     continue
+
                 if task[0] == "UNDO":
                     self._process_undo()
                 else:
@@ -324,6 +357,7 @@ class ScreenshotSession:
                 fname = f"{self.base_name_no_ext}_{count}.jpg"
             else:
                 fname = f"screen_{count}.jpg"
+
             img_path = os.path.join(self.temp_dir, fname)
             img.save(img_path, "JPEG", quality=90)
             self.image_paths.append(img_path)
@@ -337,7 +371,9 @@ class ScreenshotSession:
                     curr = os.path.getsize(self.current_filename)
                     if self.max_size_bytes > 0 and (curr + os.path.getsize(img_path)) > self.max_size_bytes:
                         self._rotate_file()
+
                 if not self.doc: self.doc = Document(self.current_filename)
+
                 txt = ""
                 if window_title and self.config['append_num']:
                     txt = f"{window_title} {count}"
@@ -345,17 +381,24 @@ class ScreenshotSession:
                     txt = window_title
                 elif self.config['append_num']:
                     txt = str(count)
+
                 if txt: self.doc.add_paragraph(txt)
                 self.doc.add_picture(img_path, width=Inches(6))
                 self.doc.add_paragraph("-" * 50)
-                try:
-                    self.doc.save(self.current_filename)
-                    self.last_known_size_str = self.get_formatted_size(self.current_filename)
-                    self.file_locked_warning_shown = False
-                except PermissionError:
-                    if not self.file_locked_warning_shown:
-                        self.gui_queue.put(("WARNING", "File Locked", "Close Word to save"))
-                        self.file_locked_warning_shown = True
+
+                self.unsaved_changes += 1
+                if self.unsaved_changes >= 3:
+                    try:
+                        self.doc.save(self.current_filename)
+                        self.last_known_size_str = self.get_formatted_size(self.current_filename)
+                        self.file_locked_warning_shown = False
+                        self.unsaved_changes = 0
+                    except PermissionError:
+                        if not self.file_locked_warning_shown:
+                            self.gui_queue.put(("WARNING", "File Locked", "Close Word to save"))
+                            self.file_locked_warning_shown = True
+                else:
+                    self.last_known_size_str = "Saving..."
 
             self.gui_queue.put(("UPDATE_SESSION", self.session_id, self.session_count, self.last_known_size_str))
         except Exception as e:
@@ -367,6 +410,7 @@ class ScreenshotSession:
             if self.image_paths:
                 p = self.image_paths.pop()
                 if os.path.exists(p): os.remove(p)
+
             if self.config['save_mode'] == 'folder':
                 f = os.path.join(self.current_filename, f"{self.base_name_no_ext}_{self.session_count}.jpg")
                 if os.path.exists(f): os.remove(f)
@@ -374,18 +418,18 @@ class ScreenshotSession:
             else:
                 if self.doc and len(self.doc.paragraphs) >= 2:
                     try:
-                        p = self.doc.paragraphs[-1]
-                        p._element.getparent().remove(p._element)
-                        if self.doc.paragraphs:
+                        removed = 0
+                        while removed < 3 and self.doc.paragraphs:
                             p = self.doc.paragraphs[-1]
                             p._element.getparent().remove(p._element)
-                        if self.doc.paragraphs:
-                            last = self.doc.paragraphs[-1]
-                            if last.text != "-" * 50: last._element.getparent().remove(last._element)
+                            removed += 1
+                            if removed == 1 and "-" not in p.text and len(p.text) > 0: break
+
                         self.doc.save(self.current_filename)
                         self.last_known_size_str = self.get_formatted_size(self.current_filename)
                     except:
                         pass
+
             self.session_count -= 1
             self.gui_queue.put(("UNDO", self.session_id, self.session_count, self.last_known_size_str))
         except:
@@ -408,22 +452,50 @@ class ScreenshotSession:
                 pass
 
     def _rotate_file(self):
+        # 1. Force save the current file
+        if self.doc:
+            try:
+                self.doc.save(self.current_filename)
+            except:
+                pass
+        self.doc = None
+
         dir_n = os.path.dirname(self.current_filename)
-        base = self.base_name_no_ext.split("_Part")[0]
-        c = 1
-        while True:
-            nn = f"{base}_Part{c}.docx"
-            fp = os.path.join(dir_n, nn)
-            if not os.path.exists(fp):
+        base = os.path.basename(self.current_filename).rsplit('.', 1)[0]
+
+        match = re.search(r"^(.*)_Part(\d+)$", base)
+
+        if match:
+            # Increment Part Number
+            root_name = match.group(1)
+            current_num = int(match.group(2))
+            new_name = f"{root_name}_Part{current_num + 1}.docx"
+            self.current_filename = os.path.join(dir_n, new_name)
+        else:
+            # Rename base file to Part1
+            root_name = base
+            c = 1
+            while True:
+                p1_name = f"{root_name}_Part{c}.docx"
+                p1_path = os.path.join(dir_n, p1_name)
+                if not os.path.exists(p1_path):
+                    break
+                c += 1
+
+            # Safety Check: Only rename if file exists
+            if os.path.exists(self.current_filename):
                 try:
-                    os.rename(self.current_filename, fp)
-                except:
-                    pass
-                self.current_filename = os.path.join(dir_n, f"{base}_Part{c + 1}.docx")
-                break
-            c += 1
+                    os.rename(self.current_filename, p1_path)
+                except Exception as e:
+                    print(f"Rename failed: {e}")
+
+            new_name = f"{root_name}_Part{c + 1}.docx"
+            self.current_filename = os.path.join(dir_n, new_name)
+
+        # Initialize new file
         self.doc = Document()
         self.doc.save(self.current_filename)
+        self.unsaved_changes = 0
         self.last_known_size_str = "0 KB"
         self.gui_queue.put(("UPDATE_FILENAME", self.current_filename))
 
@@ -449,17 +521,30 @@ class ScreenshotSession:
             for file in f: t += os.path.getsize(os.path.join(r, file))
         return f"{t / 1024:.2f} KB" if t < 1048576 else f"{t / 1048576:.2f} MB"
 
-    def _clipboard_worker(self, img, path):
-        img.convert("RGB").save(path, "JPEG")
-        self.copy_dual(img, [path])
+    def _clipboard_loop(self):
+        while True:
+            try:
+                try:
+                    img, path = self.clipboard_queue.get(timeout=0.1)
+                except queue.Empty:
+                    if not self.running: break
+                    continue
+
+                img.convert("RGB").save(path, "JPEG")
+                self.copy_dual(img, [path])
+                self.clipboard_queue.task_done()
+            except Exception as e:
+                print(f"Clip Err: {e}")
 
     def copy_dual(self, img, paths):
         do_image = self.config.get('copy_image', True)
         do_files = self.config.get('copy_files', True)
         if not do_image and not do_files: return
+
         try:
-            h_dib = None;
+            h_dib = None
             h_drop = None
+
             if do_image and img:
                 output = io.BytesIO()
                 img.convert("RGB").save(output, "BMP")
@@ -470,6 +555,7 @@ class ScreenshotSession:
                     p_dib = kernel32.GlobalLock(h_dib)
                     ctypes.memmove(p_dib, data, len(data))
                     kernel32.GlobalUnlock(h_dib)
+
             if do_files and paths:
                 f_txt = "\0".join([os.path.abspath(p) for p in paths]) + "\0\0"
                 f_dat = f_txt.encode('utf-16le')
@@ -480,16 +566,24 @@ class ScreenshotSession:
                     ctypes.memmove(p_drop, header, 20)
                     ctypes.memmove(p_drop + 20, f_dat, len(f_dat))
                     kernel32.GlobalUnlock(h_drop)
-            for _ in range(10):
+
+            success = False
+            for _ in range(20):
                 if user32.OpenClipboard(None):
                     try:
                         user32.EmptyClipboard()
                         if h_dib: user32.SetClipboardData(8, h_dib)
                         if h_drop: user32.SetClipboardData(15, h_drop)
+                        success = True
                     finally:
                         user32.CloseClipboard()
                     break
-                time.sleep(0.01)
+                time.sleep(0.1)
+
+            if not success:
+                if h_dib: kernel32.GlobalFree(h_dib)
+                if h_drop: kernel32.GlobalFree(h_drop)
+
         except:
             pass
 
@@ -535,6 +629,8 @@ class ModernUI(ctk.CTk):
         self.notification_timer = None
         self.settings_file = "config.toon"
 
+        self._cleanup_old_temp()
+
         self.ui_colors = {
             "bg_main": ("#F3F3F3", "#181818"),
             "bg_sidebar": ("#FFFFFF", "#121212"),
@@ -559,19 +655,24 @@ class ModernUI(ctk.CTk):
         self.app_title_text = "Click!"
         self.root_geometry = f"{self.user_window_w}x{self.main_window_h}"
         self.hotkey_manager = None
-        self.keyboard_thread = None
         self.running_state = True
 
         self.geometry(self.root_geometry)
         self.title(self.app_title_text)
         self.configure(fg_color=self.ui_colors["bg_main"])
 
-        icon_path = "app_icon.ico"
+        try:
+            myappid = 'himansu.clicktool.screenshot.v1'
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        except Exception:
+            pass
+
+        icon_path = resource_path("app_icon.ico")
         if os.path.exists(icon_path):
             try:
                 self.iconbitmap(icon_path)
-            except:
-                pass
+            except Exception as e:
+                print(f"Icon Load Failed: {e}")
 
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
@@ -732,7 +833,8 @@ class ModernUI(ctk.CTk):
 
         self.lbl_status = ctk.CTkLabel(content_parent, text="Ready to capture", text_color=self.ui_colors["text_sec"])
         self.lbl_status.grid(row=6, column=0, pady=(20, 0))
-        ctk.CTkLabel(content_parent, text="~ (Capture)   |   Ctrl+Alt+~ (Undo)", text_color=self.ui_colors["text_sec"],
+        ctk.CTkLabel(content_parent, text="~ (Capture)    |    Ctrl+Alt+~ (Undo)",
+                     text_color=self.ui_colors["text_sec"],
                      font=ctk.CTkFont(size=11)).grid(row=7, column=0)
 
         self.notif = ctk.CTkToplevel(self)
@@ -751,6 +853,19 @@ class ModernUI(ctk.CTk):
         self.hotkey_manager.start()
         self.check_queue()
         self.protocol("WM_DELETE_WINDOW", self.on_app_close)
+
+    def _cleanup_old_temp(self):
+        # Auto-delete temp folders from previous crashed sessions
+        temp_root = tempfile.gettempdir()
+        try:
+            for item in os.listdir(temp_root):
+                if item.startswith("Click_") and os.path.isdir(os.path.join(temp_root, item)):
+                    try:
+                        shutil.rmtree(os.path.join(temp_root, item))
+                    except:
+                        pass
+        except:
+            pass
 
     def toggle_theme(self):
         mode = self.switch_theme.get()
@@ -1014,7 +1129,7 @@ class ModernUI(ctk.CTk):
         if not self.main_active_key: return
         sess = self.instance_sessions[self.main_active_key]
         if sess.image_paths:
-            threading.Thread(target=sess.copy_dual, args=(None, sess.image_paths), daemon=True).start()
+            threading.Thread(target=sess.manual_copy_all, daemon=True).start()
             self.show_notification("Copied All", f"{len(sess.image_paths)} Images")
 
     def check_queue(self):
@@ -1029,7 +1144,8 @@ class ModernUI(ctk.CTk):
                         if key == self.main_active_key:
                             self.lbl_status.configure(text=f"Captured #{count} ({size})",
                                                       text_color=self.ui_colors["success"])
-                            self.show_notification(f"Saved #{count}", size)
+                            # FIX: Notification Text Updated
+                            self.show_notification(f"Screenshot #{count}", size)
                 elif action == "UPDATE_SESSION":
                     key, count, size = msg[1], msg[2], msg[3]
                     if key in self.instance_sessions:
@@ -1037,7 +1153,8 @@ class ModernUI(ctk.CTk):
                         if key == self.main_active_key:
                             self.lbl_status.configure(text=f"Saved #{count} ({size})",
                                                       text_color=self.ui_colors["success"])
-                            self.show_notification(f"Saved #{count}", size)
+                            # FIX: Notification Text Updated
+                            self.show_notification(f"Screenshot #{count}", size)
                 elif action == "UNDO":
                     key, count, size = msg[1], msg[2], msg[3]
                     if key in self.instance_sessions:
