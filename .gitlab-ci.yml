@@ -20,7 +20,7 @@ build_job:
   script:
     - echo "Building Exe with Nuitka..."
     # Call Nuitka using the full python path
-    - '& $env:PY_PATH -m nuitka --standalone --onefile --enable-plugin=tk-inter --include-package-data=customtkinter --include-package=docx --include-package=PIL --windows-console-mode=disable --windows-icon-from-ico="app_icon.ico" --include-data-file="app_icon.ico=app_icon.ico" --output-filename="Click.exe" click.py'
+    - '& $env:PY_PATH -m nuitka --standalone --onefile --enable-plugin=tk-inter --include-package-data=customtkinter --include-package=docx --include-package=PIL --windows-console-mode=disable --windows-icon-from-ico="app_icon.ico" --include-data-file="app_icon.ico=app_icon.ico" --output-filename="Click!.exe" Click!.py'
 
   artifacts:
     name: "Click_Tool_Build"
