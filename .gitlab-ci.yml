@@ -6,20 +6,12 @@ build_job:
   tags:
     - saas-windows-medium-amd64
   script:
-    - "echo 'Step 1: Setting up Python 3.12.0...'"
     - "choco install python --version=3.12.0 -y --allow-downgrade --no-progress"
-
-    - "echo 'Step 2: Refreshing Environment Path...'"
     - "$env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')"
-
-    - "echo 'Step 3: Installing Libraries...'"
     - "python -m pip install --upgrade pip"
     - "python -m pip install nuitka customtkinter Pillow python-docx"
 
-    - "echo 'Step 4: Compiling Click!.py...'"
-    # --include-package=customtkinter: Forces Nuitka to grab the UI theme files
-    # --windows-icon-from-ico: Fixes the .exe icon in folders
-    # --include-data-file=app_icon.ico=./: Places icon where CTK can find it
+    - "echo 'Building Production Executable...'"
     - >
       python -m nuitka 
       --standalone 
@@ -29,13 +21,11 @@ build_job:
       --include-package=customtkinter
       --assume-yes-for-downloads 
       --windows-icon-from-ico=app_icon.ico 
-      --include-data-file=app_icon.ico=./
-      --include-data-file="Click! - Guide.pdf"=./
-      --onefile-tempdir-spec="%TEMP%/Click_%PID%"
-      "Click!.py"
+      --include-data-file=app_icon.ico=app_icon.ico
+      --onefile-tempdir-spec='%TEMP%/Click_Tool_%PID%'
+      'Click!.py'
 
   artifacts:
     paths:
       - "Click!.exe"
-      - "Click! - Guide.pdf"
     expire_in: never

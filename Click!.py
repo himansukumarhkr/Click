@@ -22,14 +22,21 @@ import re
 #        NUITKA RESOURCE HELPER
 # ==========================================
 def resource_path(relative_path):
-    """ Get absolute path to resource, works for dev and for Nuitka/PyInstaller """
-    try:
-        base_path = sys._MEIPASS
-    except Exception:
+    """ Get absolute path to resource, works for dev and for Nuitka """
+    # Nuitka sets sys.frozen when compiled. It extracts data files to the same
+    # directory where the internal Python script runs.
+    if hasattr(sys, 'frozen'):
+        base_path = os.path.dirname(sys.executable)
+    else:
         base_path = os.path.abspath(".")
-    return os.path.join(base_path, relative_path)
 
+    # Check if the file exists in the executable path, if not, check the script path
+    full_path = os.path.join(base_path, relative_path)
+    if not os.path.exists(full_path):
+        base_path = os.path.dirname(os.path.abspath(__file__))
+        full_path = os.path.join(base_path, relative_path)
 
+    return full_path
 # ==========================================
 #        DPI AWARENESS
 # ==========================================
@@ -665,13 +672,6 @@ class ModernUI(ctk.CTk):
         except Exception:
             pass
 
-        icon_path = resource_path("app_icon.ico")
-        if os.path.exists(icon_path):
-            try:
-                self.iconbitmap(icon_path)
-            except Exception as e:
-                print(f"Icon Load Failed: {e}")
-
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
@@ -851,6 +851,24 @@ class ModernUI(ctk.CTk):
         self.hotkey_manager.start()
         self.check_queue()
         self.protocol("WM_DELETE_WINDOW", self.on_app_close)
+        # --- PRODUCTION ICON LOGIC ---
+        self.icon_path = resource_path("app_icon.ico")
+        self._apply_branding()
+        # Overrides CustomTkinter's default blue logo after it finishes initializing
+        self.after(150, self._apply_branding)
+
+    def _apply_branding(self):
+        """ Internal method to force apply the window icon """
+        if os.path.exists(self.icon_path):
+            try:
+                self.wm_iconbitmap(self.icon_path)
+                self.iconbitmap(self.icon_path)
+            except Exception:
+                try:
+                    img = tk.PhotoImage(file=self.icon_path)
+                    self.iconphoto(False, img)
+                except:
+                    pass
 
     def _cleanup_old_temp(self):
         # Auto-delete temp folders from previous crashed sessions
