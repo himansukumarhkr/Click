@@ -6,19 +6,21 @@ build_job:
   tags:
     - saas-windows-medium-amd64
   script:
-    - "echo 'Step 1: Downgrading Python to 3.12.0...'"
+    - "echo 'Step 1: Setting up Python 3.12.0...'"
     - "choco install python --version=3.12.0 -y --allow-downgrade --no-progress"
 
-    - "echo 'Step 2: Updating Path...'"
+    - "echo 'Step 2: Refreshing Path...'"
     - "$env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')"
 
-    - "echo 'Step 3: Installing Nuitka...'"
+    - "echo 'Step 3: Installing Nuitka and dependencies...'"
     - "python -m pip install --upgrade pip"
     - "python -m pip install nuitka"
+    # Ensure any libraries your script uses (like Pillow or pynput) are installed here
+    # - "python -m pip install Pillow pynput"
 
-    - "echo 'Step 4: Running Nuitka Build...'"
-    # Wrapped filename in double quotes to handle the '!' character
-    - 'python -m nuitka --standalone --onefile --windows-disable-console "Click!.py"'
+    - "echo 'Step 4: Compiling Click!.py...'"
+    # --assume-yes-for-downloads handles the prompt for depends.exe (Dependency Walker)
+    - 'python -m nuitka --standalone --onefile --windows-console-mode=disable --enable-plugin=tk-inter --assume-yes-for-downloads "Click!.py"'
 
   artifacts:
     paths:
