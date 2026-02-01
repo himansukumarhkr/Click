@@ -395,3 +395,11 @@ class ScreenshotSession:
     def manual_copy_all(self):
         if not self.image_paths: return
         self.copy_dual(None, self.image_paths)
+
+    def copy_master_file_to_clipboard(self):
+        if self.doc:
+            try:
+                self.doc.save(self.current_filename)
+            except:
+                pass
+        self.copy_dual(None, [os.path.abspath(self.current_filename)])

@@ -123,6 +123,12 @@ class ModernUI(ctk.CTk):
                                          text_color=self.ui_colors["btn_text"], state="disabled", height=32)
         self.btn_discard.pack(fill="x", pady=5)
 
+        self.btn_copy_session = ctk.CTkButton(self.action_frame, text="COPY SESSION FILE", command=self.copy_selected_session,
+                                              fg_color=self.ui_colors["btn_default"],
+                                              hover_color=self.ui_colors["btn_default_hover"],
+                                              text_color=self.ui_colors["btn_text"], state="disabled", height=32)
+        self.btn_copy_session.pack(fill="x", pady=5)
+
         initial_bg = self.ui_colors["bg_main"][1] if ctk.get_appearance_mode() == "Dark" else self.ui_colors["bg_main"][0]
         self.main_area = AutoScrollFrame(self, bg_color_hex=initial_bg, corner_radius=0)
         self.main_area.grid(row=0, column=1, sticky="nsew", padx=30, pady=30)
@@ -478,6 +484,15 @@ class ModernUI(ctk.CTk):
         if not sel: return
         self._close_internal(sel[0], delete=True)
 
+    def copy_selected_session(self):
+        sel = self.tree.selection()
+        if not sel: return
+        key = sel[0]
+        if key in self.instance_sessions:
+            sess = self.instance_sessions[key]
+            threading.Thread(target=sess.copy_master_file_to_clipboard, daemon=True).start()
+            self.show_notification("Copied File", "Session File Copied")
+
     def _close_internal(self, key, delete):
         sess = self.instance_sessions[key]
         sess.cleanup(delete_files=delete)
@@ -489,10 +504,12 @@ class ModernUI(ctk.CTk):
             self.btn_split.configure(state='disabled')
             self.btn_copy.configure(state='disabled')
 
-        if not self.instance_sessions and self.anchor_dir_backup:
-            self.entry_dir.delete(0, "end")
-            self.entry_dir.insert(0, self.anchor_dir_backup)
-            self.anchor_dir_backup = None
+        if not self.instance_sessions:
+            self.btn_copy_session.configure(state="disabled")
+            if self.anchor_dir_backup:
+                self.entry_dir.delete(0, "end")
+                self.entry_dir.insert(0, self.anchor_dir_backup)
+                self.anchor_dir_backup = None
 
     def on_list_select(self, event):
         sel = self.tree.selection()
@@ -502,6 +519,7 @@ class ModernUI(ctk.CTk):
             self.btn_discard.configure(state="disabled", fg_color=self.ui_colors["danger_disabled"])
             self.btn_split.configure(state="disabled")
             self.btn_copy.configure(state="disabled")
+            self.btn_copy_session.configure(state="disabled")
             return
 
         key = sel[0]
@@ -512,6 +530,7 @@ class ModernUI(ctk.CTk):
                                 text_color=self.ui_colors["btn_text"])
         self.btn_discard.configure(state="normal", fg_color=self.ui_colors["danger"],
                                    text_color=self.ui_colors["btn_text"])
+        self.btn_copy_session.configure(state="normal")
 
         if status == "Paused":
             self.btn_resume.configure(state="normal", fg_color=self.ui_colors["accent"],
