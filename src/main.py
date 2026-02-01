@@ -273,7 +273,11 @@ class ModernUI(ctk.CTk):
              # If frozen, Nuitka shows the splash. We just need to ensure the window is visible when ready.
              # Nuitka automatically closes its splash when the Python script starts executing or shortly after.
              # We can just ensure our window is deiconified.
+             # IMPORTANT: Nuitka's splash screen might hide the main window if we don't explicitly show it.
+             # Also, we need to make sure we don't block the main thread.
              self.deiconify()
+             self.lift()
+             self.focus_force()
 
     def show_splash(self):
         splash_path = resource_path("assets/splash.png")
