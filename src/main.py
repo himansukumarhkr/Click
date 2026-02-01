@@ -9,6 +9,7 @@ import tempfile
 import shutil
 import queue
 import re
+import sys
 
 from src.utils import resource_path, set_dpi_awareness
 from src.hotkeys import HotkeyListener
@@ -237,6 +238,17 @@ class ModernUI(ctk.CTk):
                      text_color=self.ui_colors["text_sec"],
                      font=ctk.CTkFont(size=11)).grid(row=7, column=0)
 
+        self.notif = ctk.CTkToplevel(self)
+        self.notif.withdraw()
+        self.notif.overrideredirect(True)
+        self.notif.attributes("-topmost", True)
+        self.notif_frame = ctk.CTkFrame(self.notif, fg_color=self.ui_colors["bg_sidebar"], corner_radius=10,
+                                        border_width=1, border_color="gray")
+        self.notif_frame.pack(fill="both", expand=True)
+        self.notif_label = ctk.CTkLabel(self.notif_frame, text="", font=ctk.CTkFont(size=13, weight="bold"),
+                                        text_color=self.ui_colors["text"])
+        self.notif_label.pack(expand=True, padx=20, pady=10)
+
         self.load_defaults()
 
         # --- BRANDING FIX ---
@@ -252,21 +264,24 @@ class ModernUI(ctk.CTk):
         self.check_queue()
         self.protocol("WM_DELETE_WINDOW", self.on_app_close)
 
-        # --- SPLASH SCREEN ---
-        # Only show splash if NOT running as a frozen Nuitka onefile app
-        # because Nuitka handles the splash screen natively via --onefile-windows-splash-screen-image
-        import sys
-        if not getattr(sys, 'frozen', False):
-             self.show_splash()
-        else:
-             # If frozen, Nuitka shows the splash. We just need to ensure the window is visible when ready.
-             # Nuitka automatically closes its splash when the Python script starts executing or shortly after.
-             # We can just ensure our window is deiconified.
-             # IMPORTANT: Nuitka's splash screen might hide the main window if we don't explicitly show it.
-             # Also, we need to make sure we don't block the main thread.
+        # --- SPLASH SCREEN LOGIC ---
+        # 1. Handle PyInstaller Splash (if present)
+        try:
+            import pyi_splash
+            if pyi_splash.is_alive():
+                pyi_splash.close()
+        except ImportError:
+            pass
+
+        # 2. Handle Nuitka Splash (if present)
+        # Nuitka handles its own splash closing automatically, but we ensure window is visible
+        if getattr(sys, 'frozen', False):
              self.deiconify()
              self.lift()
              self.focus_force()
+        else:
+             # 3. Dev Mode Splash (Tkinter)
+             self.show_splash()
 
     def show_splash(self):
         splash_path = resource_path("assets/splash.png")
