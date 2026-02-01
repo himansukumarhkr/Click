@@ -72,21 +72,23 @@ jobs:
           certutil -hashfile "LICENSE.md" SHA256 > LICENSE.md.sha256
           certutil -hashfile "Click! - Guide.pdf" SHA256 > "Click! - Guide.pdf.sha256"
 
-      # 🔬 VIRUSTOTAL — FILE UPLOAD SCAN (BATCHED)
+      # -----------------------------
+      # VirusTotal batched scan
+      # -----------------------------
       - name: VirusTotal scan (batched, 3 files max)
         shell: powershell
         env:
           VT_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
         run: |
           $files = @(
-            "Click!.exe",
-            "README.md",
-            "LICENSE.md",
-            "Click! - Guide.pdf"
+            'Click!.exe',
+            'README.md',
+            'LICENSE.md',
+            'Click! - Guide.pdf'
           )
 
           if (-not $env:VT_API_KEY) {
-            Write-Error "VirusTotal API key not set"
+            Write-Error 'VirusTotal API key not set'
             exit 1
           }
 
@@ -94,40 +96,44 @@ jobs:
           $delaySeconds = 70
 
           for ($i = 0; $i -lt $files.Count; $i += $batchSize) {
-            $batch = $files[$i..([Math]::Min($i + $batchSize - 1, $files.Count - 1))]
+            $endIndex = [Math]::Min($i + $batchSize - 1, $files.Count - 1)
+            $batch = $files[$i..$endIndex]
 
-            Write-Host "Uploading batch: $($batch -join ', ')"
+            Write-Host ("Uploading batch: " + ($batch -join ', '))
 
             foreach ($file in $batch) {
               if (-not (Test-Path $file)) {
-                Write-Error "File not found: $file"
+                Write-Error ("File not found: " + $file)
                 exit 1
               }
 
-              Write-Host "→ Uploading $file to VirusTotal"
+              Write-Host ("→ Uploading " + $file + " to VirusTotal")
 
-              curl.exe `
+              $response = curl.exe `
                 -s `
                 -X POST "https://www.virustotal.com/api/v3/files" `
-                -H "x-apikey: $env:VT_API_KEY" `
-                -F "file=@$file"
+                -H ("x-apikey: " + $env:VT_API_KEY) `
+                -F ("file=@" + $file)
 
               if ($LASTEXITCODE -ne 0) {
-                Write-Error "VirusTotal upload failed for $file"
+                Write-Error ("VirusTotal upload failed for " + $file)
                 exit 1
               }
 
-              Write-Host "✓ Uploaded $file"
+              Write-Host ("✓ Uploaded " + $file)
             }
 
             if ($i + $batchSize -lt $files.Count) {
-              Write-Host "Waiting $delaySeconds seconds before next batch..."
+              Write-Host ("Waiting " + $delaySeconds + " seconds before next batch...")
               Start-Sleep -Seconds $delaySeconds
             }
           }
 
-          Write-Host "All files uploaded to VirusTotal successfully."
+          Write-Host 'All files uploaded to VirusTotal successfully.'
 
+      # -----------------------------
+      # GitHub Release
+      # -----------------------------
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
