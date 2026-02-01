@@ -60,7 +60,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Click_Temp_Build
-          path: Click!.exe
+          path: "Click!.exe"
           retention-days: 1
 
       - name: VirusTotal Scan
@@ -69,10 +69,10 @@ jobs:
         with:
           vt_api_key: ${{ secrets.VIRUSTOTAL_API_KEY }}
           files: |
-            Click!.exe
+            "Click!.exe"
             LICENSE.md
             README.md
-            Click! - Guide.pdf
+            "Click! - Guide.pdf"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -92,10 +92,10 @@ jobs:
             - [Click!.exe Analysis](${{ fromJson(steps.vt_scan.outputs.analysis).Click_exe.url }})
             - [Documentation Analysis](${{ fromJson(steps.vt_scan.outputs.analysis).Click_Guide_pdf.url }})
           files: |
-            Click!.exe
+            "Click!.exe"
             LICENSE.md
             README.md
-            Click! - Guide.pdf
+            "Click! - Guide.pdf"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
