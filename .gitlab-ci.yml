@@ -10,6 +10,11 @@ build_job:
   tags:
     - saas-windows-medium-amd64
 
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+      when: manual
+      allow_failure: true
+
   script:
     - 'echo "Step 1: Installing Python 3.12 via Chocolatey..."'
     - 'choco install python --version=3.12.0 -y --allow-downgrade --no-progress'
@@ -22,8 +27,10 @@ build_job:
     - 'python -m pip install nuitka customtkinter Pillow python-docx zstandard'
 
     - 'echo "Step 4: Building Standalone Executable with Metadata..."'
-    # Updated command with professional metadata
-    - 'python -m nuitka --standalone --onefile --windows-console-mode=disable --enable-plugin=tk-inter --include-package=customtkinter --assume-yes-for-downloads --windows-icon-from-ico=app_icon.ico --include-data-file=app_icon.ico=app_icon.ico --onefile-tempdir-spec="%TEMP%/Click_Tool_%PID%" --windows-company-name="Himansu Kumar" --windows-product-name="Click! Screenshot Tool" --windows-file-version="1.0.0.0" --windows-product-version="1.0.0.0" --windows-file-description="Professional Screenshot Automation Utility" "Click!.py"'
+    - 'python -m nuitka --standalone --onefile --windows-console-mode=disable --enable-plugin=tk-inter --include-package=customtkinter --assume-yes-for-downloads --windows-icon-from-ico=src/assets/app_icon.ico --include-data-file=src/assets/app_icon.ico=src/assets/app_icon.ico --onefile-tempdir-spec="%TEMP%/Click_Tool_%PID%" --windows-company-name="Himansu Kumar" --windows-product-name="Click! Screenshot Tool" --windows-file-version="1.0.0.0" --windows-product-version="1.0.0.0" --windows-file-description="Professional Screenshot Automation Utility" "src/main.py"'
+    
+    - 'echo "Step 5: Renaming executable..."'
+    - 'ren main.exe "Click!.exe"'
 
   artifacts:
     name: "Click_Tool_Freeware_Pack"

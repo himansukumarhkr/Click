@@ -1,0 +1,12 @@
+filename: screenshot
+save_dir: C:\Users\himan\Desktop\Evidence
+w: 950
+h: 700
+max_size: 0
+save_by_date: True
+save_mode: docx
+log_title: False
+append_num: True
+auto_copy: False
+copy_files: True
+copy_image: True
