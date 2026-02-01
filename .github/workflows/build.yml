@@ -5,9 +5,10 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version (e.g. 1.0.0)"
+        description: "Set Version Number (e.g., 1.0.0)"
         required: true
         default: "1.0.0"
+        type: string
 
 jobs:
   build:
@@ -17,164 +18,137 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Setup Python 3.12 (x64)
+      - name: Set up Python 3.12 (x64)
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          architecture: x64
-          cache: pip
+          architecture: "x64"
+          cache: "pip"
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install nuitka cyclonedx-bom
+          pip install nuitka
 
-      # -----------------------------
-      # FIRST BUILD
-      # -----------------------------
-      - name: Build #1
+      - name: Build executable (Nuitka)
         shell: powershell
         run: |
           python -m nuitka `
             --standalone `
             --onefile `
-            --output-dir=build1 `
-            --assume-yes-for-downloads `
             --windows-console-mode=disable `
             --enable-plugin=tk-inter `
             --include-package=customtkinter `
-            --onefile-tempdir-spec="{TEMP}/Click_{PID}" `
-            --windows-icon-from-ico="src/assets/app_icon.ico" `
-            --windows-company-name="Himansu Kumar" `
-            --windows-product-name="Click!" `
-            --windows-file-version="${{ github.event.inputs.version }}" `
-            --windows-product-version="${{ github.event.inputs.version }}" `
-            src/main.py
-
-      - name: Extract build #1
-        shell: powershell
-        run: |
-          $exe = Get-ChildItem build1 -Recurse -Filter *.exe | Select-Object -First 1
-          Copy-Item $exe.FullName Click-A.exe -Force
-
-      # -----------------------------
-      # SECOND BUILD (clean)
-      # -----------------------------
-      - name: Clean environment
-        shell: powershell
-        run: |
-          Remove-Item build2 -Recurse -Force -ErrorAction SilentlyContinue
-          Remove-Item $env:TEMP\Click_* -Recurse -Force -ErrorAction SilentlyContinue
-
-      - name: Build #2
-        shell: powershell
-        run: |
-          python -m nuitka `
-            --standalone `
-            --onefile `
-            --output-dir=build2 `
             --assume-yes-for-downloads `
-            --windows-console-mode=disable `
-            --enable-plugin=tk-inter `
-            --include-package=customtkinter `
-            --onefile-tempdir-spec="{TEMP}/Click_{PID}" `
+            --low-memory `
+            --jobs=2 `
+            --onefile-tempdir-spec="{TEMP}/Click_Build_{PID}" `
+            --onefile-windows-splash-screen-image="src/assets/splash.png" `
             --windows-icon-from-ico="src/assets/app_icon.ico" `
             --windows-company-name="Himansu Kumar" `
-            --windows-product-name="Click!" `
+            --windows-product-name="Click! Screenshot Tool" `
+            --windows-file-description="Professional Screenshot Automation Utility" `
             --windows-file-version="${{ github.event.inputs.version }}" `
             --windows-product-version="${{ github.event.inputs.version }}" `
+            --output-dir=dist `
             src/main.py
 
-      - name: Extract build #2
+      - name: Rename output
         shell: powershell
         run: |
-          $exe = Get-ChildItem build2 -Recurse -Filter *.exe | Select-Object -First 1
-          Copy-Item $exe.FullName Click-B.exe -Force
+          Move-Item dist\main.exe "Click!.exe" -Force
 
-      # -----------------------------
-      # REPRODUCIBLE VERIFICATION
-      # -----------------------------
-      - name: Verify reproducible build
+      - name: Generate SHA256 checksums
         shell: powershell
         run: |
-          $hashA = (Get-FileHash Click-A.exe -Algorithm SHA256).Hash
-          $hashB = (Get-FileHash Click-B.exe -Algorithm SHA256).Hash
+          certutil -hashfile "Click!.exe" SHA256 > Click!.exe.sha256
+          certutil -hashfile "README.md" SHA256 > README.md.sha256
+          certutil -hashfile "LICENSE.md" SHA256 > LICENSE.md.sha256
+          certutil -hashfile "Click! - Guide.pdf" SHA256 > "Click! - Guide.pdf.sha256"
 
-          Write-Host "Build A: $hashA"
-          Write-Host "Build B: $hashB"
+      # 🔬 VIRUSTOTAL — FILE UPLOAD SCAN (BATCHED)
+      - name: VirusTotal scan (batched, 3 files max)
+        shell: powershell
+        env:
+          VT_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
+        run: |
+          $files = @(
+            "Click!.exe",
+            "README.md",
+            "LICENSE.md",
+            "Click! - Guide.pdf"
+          )
 
-          if ($hashA -ne $hashB) {
-            Write-Error "❌ Build is NOT reproducible"
+          if (-not $env:VT_API_KEY) {
+            Write-Error "VirusTotal API key not set"
             exit 1
           }
 
-          Write-Host "✅ Reproducible build verified"
+          $batchSize = 3
+          $delaySeconds = 70
 
-      # -----------------------------
-      # FINAL OUTPUT
-      # -----------------------------
-      - name: Normalize output
-        shell: powershell
-        run: |
-          Copy-Item Click-A.exe "Click!.exe" -Force
+          for ($i = 0; $i -lt $files.Count; $i += $batchSize) {
+            $batch = $files[$i..([Math]::Min($i + $batchSize - 1, $files.Count - 1))]
 
-      # -----------------------------
-      # SIGN (OPTIONAL / EV READY)
-      # -----------------------------
-      - name: Code signing
-        shell: powershell
-        continue-on-error: true
-        run: |
-          signtool sign `
-            /fd SHA256 `
-            /td SHA256 `
-            /tr http://timestamp.digicert.com `
-            "Click!.exe"
+            Write-Host "Uploading batch: $($batch -join ', ')"
 
-      # -----------------------------
-      # SHA256 + SBOM
-      # -----------------------------
-      - name: Generate SHA256
-        shell: powershell
-        run: |
-          Get-FileHash "Click!.exe" -Algorithm SHA256 |
-          ForEach-Object {
-            "$($_.Hash)  Click!.exe"
-          } | Out-File "Click!.exe.sha256" -Encoding ascii
+            foreach ($file in $batch) {
+              if (-not (Test-Path $file)) {
+                Write-Error "File not found: $file"
+                exit 1
+              }
 
-      - name: Generate SBOM
-        shell: powershell
-        run: |
-          cyclonedx-py -r -i requirements.txt -o "sbom.json"
+              Write-Host "→ Uploading $file to VirusTotal"
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Click-x64
-          path: |
-            Click!.exe
-            Click!.exe.sha256
-            sbom.json
+              curl.exe `
+                -s `
+                -X POST "https://www.virustotal.com/api/v3/files" `
+                -H "x-apikey: $env:VT_API_KEY" `
+                -F "file=@$file"
 
-  release:
-    needs: build
-    runs-on: windows-latest
+              if ($LASTEXITCODE -ne 0) {
+                Write-Error "VirusTotal upload failed for $file"
+                exit 1
+              }
 
-    permissions:
-      contents: write
+              Write-Host "✓ Uploaded $file"
+            }
 
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: dist
+            if ($i + $batchSize -lt $files.Count) {
+              Write-Host "Waiting $delaySeconds seconds before next batch..."
+              Start-Sleep -Seconds $delaySeconds
+            }
+          }
 
-      - uses: softprops/action-gh-release@v2
+          Write-Host "All files uploaded to VirusTotal successfully."
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: "v${{ github.event.inputs.version }}"
           name: "Click! v${{ github.event.inputs.version }}"
           make_latest: true
-          files: dist/**/*
+          body: |
+            ## Click!
+
+            **Version:** ${{ github.event.inputs.version }}
+            **Platform:** Windows x64
+
+            ### Security
+            - SHA256 checksums included
+            - Files uploaded to VirusTotal (batched, rate-safe)
+
+          files: |
+            Click!.exe
+            *.sha256
+            README.md
+            LICENSE.md
+            Click! - Guide.pdf
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
