@@ -5,101 +5,163 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Set Version Number (e.g., 1.0.0)"
+        description: "Version (e.g. 1.0.0)"
         required: true
         default: "1.0.0"
-        type: string
 
 jobs:
   build:
     runs-on: windows-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, arm64]
+
     permissions:
       contents: write
-      actions: write
 
     steps:
-      - name: "Checkout Code"
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - uses: actions/checkout@v4
 
-      - name: "Set up Python 3.12"
+      - name: Setup Python 3.12 (${{ matrix.arch }})
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: "pip"
+          architecture: ${{ matrix.arch }}
+          cache: pip
 
-      - name: "Install Dependencies"
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
+          pip install -r requirements.txt
+          pip install nuitka cyclonedx-bom
 
-      - name: "Build Standalone Executable"
+      - name: Build #1
         shell: powershell
         run: |
-          python -m nuitka --standalone --onefile --windows-console-mode=disable `
-          --enable-plugin=tk-inter --include-package=customtkinter `
-          --jobs=2 --low-memory --assume-yes-for-downloads `
-          --onefile-windows-splash-screen-image="src/assets/splash.png" `
-          --windows-icon-from-ico="src/assets/app_icon.ico" `
-          --include-data-file="src/assets/app_icon.ico=src/assets/app_icon.ico" `
-          --onefile-tempdir-spec="{TEMP}/Click_Tool_{PID}" `
-          --windows-company-name="Himansu Kumar" `
-          --windows-product-name="Click! Screenshot Tool" `
-          --windows-file-description="Professional Screenshot Automation Utility" `
-          --windows-file-version="${{ github.event.inputs.version }}" `
-          --windows-product-version="${{ github.event.inputs.version }}" `
-          "src/main.py"
+          python -m nuitka `
+            --standalone `
+            --onefile `
+            --output-dir=build1 `
+            --assume-yes-for-downloads `
+            --windows-console-mode=disable `
+            --enable-plugin=tk-inter `
+            --include-package=customtkinter `
+            --onefile-tempdir-spec="{TEMP}/Click_{PID}" `
+            --windows-icon-from-ico="src/assets/app_icon.ico" `
+            --windows-company-name="Himansu Kumar" `
+            --windows-product-name="Click!" `
+            --windows-file-version="${{ github.event.inputs.version }}" `
+            --windows-product-version="${{ github.event.inputs.version }}" `
+            src/main.py
 
-      - name: "Rename Output"
+      - name: Extract build #1
         shell: powershell
         run: |
-          Move-Item -Path "main.exe" -Destination "Click!.exe" -Force
+          $exe = Get-ChildItem build1 -Recurse -Filter *.exe | Select-Object -First 1
+          Copy-Item $exe.FullName Click-A.exe -Force
 
-      - name: "Upload Temporary Artifact"
-        uses: actions/upload-artifact@v4
+      - name: Clean environment
+        shell: powershell
+        run: |
+          Remove-Item build2 -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item $env:TEMP\Click_* -Recurse -Force -ErrorAction SilentlyContinue
+
+      - name: Build #2
+        shell: powershell
+        run: |
+          python -m nuitka `
+            --standalone `
+            --onefile `
+            --output-dir=build2 `
+            --assume-yes-for-downloads `
+            --windows-console-mode=disable `
+            --enable-plugin=tk-inter `
+            --include-package=customtkinter `
+            --onefile-tempdir-spec="{TEMP}/Click_{PID}" `
+            --windows-icon-from-ico="src/assets/app_icon.ico" `
+            --windows-company-name="Himansu Kumar" `
+            --windows-product-name="Click!" `
+            --windows-file-version="${{ github.event.inputs.version }}" `
+            --windows-product-version="${{ github.event.inputs.version }}" `
+            src/main.py
+
+      - name: Extract build #2
+        shell: powershell
+        run: |
+          $exe = Get-ChildItem build2 -Recurse -Filter *.exe | Select-Object -First 1
+          Copy-Item $exe.FullName Click-B.exe -Force
+
+      - name: Verify reproducible build
+        shell: powershell
+        run: |
+          $hashA = (Get-FileHash Click-A.exe -Algorithm SHA256).Hash
+          $hashB = (Get-FileHash Click-B.exe -Algorithm SHA256).Hash
+
+          Write-Host "Build A: $hashA"
+          Write-Host "Build B: $hashB"
+
+          if ($hashA -ne $hashB) {
+            Write-Error "❌ Build is NOT reproducible"
+            exit 1
+          }
+
+          Write-Host "✅ Reproducible build verified"
+
+      - name: Normalize output
+        shell: powershell
+        run: |
+          Copy-Item Click-A.exe "Click!-${{ matrix.arch }}.exe" -Force
+
+      - name: Code signing
+        shell: powershell
+        continue-on-error: true
+        run: |
+          signtool sign `
+            /fd SHA256 `
+            /td SHA256 `
+            /tr http://timestamp.digicert.com `
+            "Click!-${{ matrix.arch }}.exe"
+
+      - name: Generate SHA256
+        shell: powershell
+        run: |
+          Get-FileHash "Click!-${{ matrix.arch }}.exe" -Algorithm SHA256 |
+          ForEach-Object {
+            "$($_.Hash)  Click!-${{ matrix.arch }}.exe"
+          } | Out-File "Click!-${{ matrix.arch }}.sha256" -Encoding ascii
+
+      - name: Generate SBOM
+        shell: powershell
+        run: |
+          cyclonedx-py -r -i requirements.txt -o "sbom-${{ matrix.arch }}.json"
+
+      - uses: actions/upload-artifact@v4
         with:
-          name: "Click_Temp_Build"
-          path: "Click!.exe"
-          retention-days: 1
+          name: Click-${{ matrix.arch }}
+          path: |
+            Click!-${{ matrix.arch }}.exe
+            Click!-${{ matrix.arch }}.sha256
+            sbom-${{ matrix.arch }}.json
 
-      - name: "VirusTotal Scan"
-        id: vt_scan
-        uses: crazy-max/ghaction-virustotal@v4
+  release:
+    needs: build
+    runs-on: windows-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v4
         with:
-          vt_api_key: ${{ secrets.VIRUSTOTAL_API_KEY }}
-          files: |
-            "Click!.exe"
-            "LICENSE.md"
-            "README.md"
-            "Click! - Guide.pdf"
+          path: dist
 
-      - name: "Create GitHub Release"
-        uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v2
         with:
           tag_name: "v${{ github.event.inputs.version }}"
-          name: "Click!"
+          name: "Click! v${{ github.event.inputs.version }}"
           make_latest: true
-          body: |
-            ## Click!
-            
-            **Release Details:**
-            - Version: ${{ github.event.inputs.version }}
-            - Environment: Windows
-            - UI: High-DPI Aware & Splash Screen enabled
-            
-            **🔒 Security Verification (VirusTotal):**
-            - [Click!.exe Analysis](${{ fromJson(steps.vt_scan.outputs.analysis).Click_exe.url }})
-            - [Documentation Analysis](${{ fromJson(steps.vt_scan.outputs.analysis).Click_Guide_pdf.url }})
-          files: |
-            "Click!.exe"
-            "LICENSE.md"
-            "README.md"
-            "Click! - Guide.pdf"
+          files: dist/**/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: "Delete Temporary Artifacts"
-        uses: geekyeggo/delete-artifact@v5
-        with:
-          name: "Click_Temp_Build"
