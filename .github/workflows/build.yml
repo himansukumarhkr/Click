@@ -18,11 +18,17 @@ jobs:
       contents: write
 
     steps:
+      # -----------------------------
+      # Checkout
+      # -----------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # -----------------------------
+      # Python setup (x64 only)
+      # -----------------------------
       - name: Set up Python 3.12 (x64)
         uses: actions/setup-python@v5
         with:
@@ -30,12 +36,18 @@ jobs:
           architecture: "x64"
           cache: "pip"
 
+      # -----------------------------
+      # Install dependencies
+      # -----------------------------
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install nuitka
 
+      # -----------------------------
+      # Build executable
+      # -----------------------------
       - name: Build executable (Nuitka)
         shell: powershell
         run: |
@@ -59,11 +71,17 @@ jobs:
             --output-dir=dist `
             src/main.py
 
+      # -----------------------------
+      # Rename output
+      # -----------------------------
       - name: Rename output
         shell: powershell
         run: |
           Move-Item dist\main.exe "Click!.exe" -Force
 
+      # -----------------------------
+      # Generate SHA256 checksums
+      # -----------------------------
       - name: Generate SHA256 checksums
         shell: powershell
         run: |
@@ -73,18 +91,22 @@ jobs:
           certutil -hashfile "Click! - Guide.pdf" SHA256 > "Click! - Guide.pdf.sha256"
 
       # -----------------------------
-      # VirusTotal batched scan (inline, escaped !)
+      # VirusTotal batched scan
       # -----------------------------
-      - name: VirusTotal scan (batched, 3 files max)
-        shell: powershell
+      - name: VirusTotal scan (batched, including SHA256)
+        shell: pwsh
         env:
           VT_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
         run: |
           $files = @(
-            'Click'"'"'!.exe',         # escape ! for YAML
+            'Click'"'"'!.exe',
+            'Click!.exe.sha256',
             'README.md',
+            'README.md.sha256',
             'LICENSE.md',
-            'Click'"'"' - Guide.pdf'   # escape ! for YAML
+            'LICENSE.md.sha256',
+            'Click'"'"' - Guide.pdf',
+            'Click! - Guide.pdf.sha256'
           )
 
           if (-not $env:VT_API_KEY) {
@@ -113,7 +135,7 @@ jobs:
                 -s `
                 -X POST "https://www.virustotal.com/api/v3/files" `
                 -H ("x-apikey: " + $env:VT_API_KEY) `
-                -F ("file=@" + $file)
+                -F ("file=@" + '"' + $file + '"')
 
               if ($LASTEXITCODE -ne 0) {
                 Write-Error ("VirusTotal upload failed for " + $file)
@@ -155,6 +177,6 @@ jobs:
             *.sha256
             README.md
             LICENSE.md
-            Click! - Guide.pdf
+            "Click! - Guide.pdf"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
