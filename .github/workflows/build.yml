@@ -1,4 +1,4 @@
-name: Build Click! Freeware Pack
+name: Click!
 
 on:
   workflow_dispatch: # Manual trigger
@@ -41,7 +41,7 @@ jobs:
       - name: Upload Pack
         uses: actions/upload-artifact@v4
         with:
-          name: "Click_Tool_Freeware_Pack"
+          name: "Click!"
           # Quoting these paths prevents YAML from misinterpreting the "!"
           path: |
             "Click!.exe"
