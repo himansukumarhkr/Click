@@ -68,6 +68,7 @@ jobs:
             --windows-file-description="Professional Screenshot Automation Utility" `
             --windows-file-version="${{ github.event.inputs.version }}" `
             --windows-product-version="${{ github.event.inputs.version }}" `
+            --include-data-dir="src/assets=assets" `
             --output-dir=dist `
             src/main.py
 
