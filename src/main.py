@@ -263,6 +263,64 @@ class ModernUI(ctk.CTk):
         self.check_queue()
         self.protocol("WM_DELETE_WINDOW", self.on_app_close)
 
+        # --- SPLASH SCREEN ---
+        # Only show splash if NOT running as a frozen Nuitka onefile app
+        # because Nuitka handles the splash screen natively via --onefile-windows-splash-screen-image
+        import sys
+        if not getattr(sys, 'frozen', False):
+             self.show_splash()
+        else:
+             # If frozen, Nuitka shows the splash. We just need to ensure the window is visible when ready.
+             # Nuitka automatically closes its splash when the Python script starts executing or shortly after.
+             # We can just ensure our window is deiconified.
+             self.deiconify()
+
+    def show_splash(self):
+        splash_path = resource_path("assets/splash.png")
+        if os.path.exists(splash_path):
+            try:
+                # Create a Toplevel window for the splash screen
+                splash = ctk.CTkToplevel(self)
+                splash.overrideredirect(True)
+                splash.attributes("-topmost", True)
+
+                # Load the image
+                from PIL import Image
+                pil_image = Image.open(splash_path)
+                
+                # Get image dimensions
+                width, height = pil_image.size
+                
+                # Center the splash screen
+                screen_width = self.winfo_screenwidth()
+                screen_height = self.winfo_screenheight()
+                x = (screen_width - width) // 2
+                y = (screen_height - height) // 2
+                splash.geometry(f"{width}x{height}+{x}+{y}")
+
+                # Display the image
+                ctk_image = ctk.CTkImage(light_image=pil_image, dark_image=pil_image, size=(width, height))
+                label = ctk.CTkLabel(splash, image=ctk_image, text="")
+                label.pack()
+
+                # Hide the main window initially
+                self.withdraw()
+
+                # Schedule splash screen destruction and main window reveal
+                def end_splash():
+                    splash.destroy()
+                    self.deiconify()
+                    self.lift()
+                    self.focus_force()
+
+                # Use after_idle to ensure the splash is drawn before waiting
+                splash.after(100, lambda: self.after(3000, end_splash))
+            except Exception as e:
+                print(f"Splash screen error: {e}")
+                self.deiconify() # Ensure main window shows if splash fails
+        else:
+             self.deiconify() # Ensure main window shows if splash image missing
+
     def _apply_branding(self):
         """ Internal method to force apply the window icon """
         if os.path.exists(self.icon_path):

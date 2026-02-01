@@ -8,13 +8,14 @@ def resource_path(relative_path):
     if hasattr(sys, 'frozen'):
         base_path = os.path.dirname(sys.executable)
     else:
-        base_path = os.path.abspath(".")
+        # In development, we want to look relative to the project root
+        # Assuming src/utils.py is one level deep in src/
+        base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    full_path = os.path.join(base_path, relative_path)
-
-    # Fallback for dev environment or local runs
+    full_path = os.path.join(base_path, "src", relative_path)
+    
+    # If that doesn't exist, try without 'src' prefix (for some build structures)
     if not os.path.exists(full_path):
-        base_path = os.path.dirname(os.path.abspath(__file__))
         full_path = os.path.join(base_path, relative_path)
 
     return full_path
