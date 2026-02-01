@@ -23,28 +23,33 @@ jobs:
           python -m pip install -r requirements.txt
 
       - name: Build Standalone Executable
-        # We use double quotes for the paths to handle the "!" and spaces safely
+        shell: powershell
         run: |
           python -m nuitka --standalone --onefile --windows-console-mode=disable `
           --enable-plugin=tk-inter --include-package=customtkinter `
           --jobs=2 --low-memory `
           --windows-icon-from-ico="src/assets/app_icon.ico" `
           --include-data-file="src/assets/app_icon.ico=src/assets/app_icon.ico" `
-          --onefile-tempdir-spec="%TEMP%/Click_Tool_%PID%" `
+          --onefile-tempdir-spec="{TEMP}/Click_Tool_{PID}" `
           --windows-company-name="Himansu Kumar" `
           --windows-product-name="Click! Screenshot Tool" `
           --windows-file-description="Professional Screenshot Automation Utility" `
+          --windows-file-version="1.0.0.0" `
+          --windows-product-version="1.0.0.0" `
           "src/main.py"
-          
-          ren main.exe "Click!.exe"
+
+      - name: Rename Output
+        shell: powershell
+        run: |
+          # PowerShell handles '!' better with Move-Item and explicit paths
+          Move-Item -Path "main.exe" -Destination "Click!.exe" -Force
 
       - name: Upload Pack
         uses: actions/upload-artifact@v4
         with:
-          name: "Click!"
-          # Quoting these paths prevents YAML from misinterpreting the "!"
+          name: "Click_Pack"
           path: |
-            "Click!.exe"
-            "LICENSE.md"
-            "README.md"
-            "Click! - Guide.pdf"
+            Click!.exe
+            LICENSE.md
+            README.md
+            Click! - Guide.pdf
