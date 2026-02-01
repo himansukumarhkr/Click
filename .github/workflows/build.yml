@@ -1,11 +1,20 @@
-name: Click!
+name: "🚀 Build Click! Pack"
+run-name: "Build v${{ github.event.inputs.version }} by @${{ github.actor }}"
 
 on:
-  workflow_dispatch: # Manual trigger
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Set Version Number (e.g., 1.0.0)'
+        required: true
+        default: '1.0.0'
+        type: string
 
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      contents: write # Essential for creating the Release and uploading assets
 
     steps:
       - name: Checkout Code
@@ -25,31 +34,45 @@ jobs:
       - name: Build Standalone Executable
         shell: powershell
         run: |
+          # The --assume-yes flag handles the depends22 download automatically
+          # We omit --windows-uac-admin to ensure it runs without admin rights on VDIs
           python -m nuitka --standalone --onefile --windows-console-mode=disable `
           --enable-plugin=tk-inter --include-package=customtkinter `
-          --jobs=2 --low-memory `
+          --jobs=2 --low-memory --assume-yes-for-downloads `
+          --onefile-windows-splash-screen-image="src/assets/splash.png" `
           --windows-icon-from-ico="src/assets/app_icon.ico" `
           --include-data-file="src/assets/app_icon.ico=src/assets/app_icon.ico" `
           --onefile-tempdir-spec="{TEMP}/Click_Tool_{PID}" `
           --windows-company-name="Himansu Kumar" `
           --windows-product-name="Click! Screenshot Tool" `
           --windows-file-description="Professional Screenshot Automation Utility" `
-          --windows-file-version="1.0.0.0" `
-          --windows-product-version="1.0.0.0" `
+          --windows-file-version="${{ github.event.inputs.version }}" `
+          --windows-product-version="${{ github.event.inputs.version }}" `
           "src/main.py"
 
       - name: Rename Output
         shell: powershell
         run: |
-          # PowerShell handles '!' better with Move-Item and explicit paths
+          # Use Move-Item for reliable renaming in PowerShell
           Move-Item -Path "main.exe" -Destination "Click!.exe" -Force
 
-      - name: Upload Pack
-        uses: actions/upload-artifact@v4
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: "Click_Pack"
-          path: |
+          tag_name: "v${{ github.event.inputs.version }}"
+          name: "Click! v${{ github.event.inputs.version }}"
+          body: |
+            ## Click! Screenshot Tool
+            VDI-Optimized Release.
+            
+            **Release Details:**
+            - Version: ${{ github.event.inputs.version }}
+            - Environment: Windows (No Admin Required)
+            - UI: High-DPI Aware & Splash Screen enabled
+          files: |
             Click!.exe
             LICENSE.md
             README.md
             Click! - Guide.pdf
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
