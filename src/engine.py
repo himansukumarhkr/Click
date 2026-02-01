@@ -14,8 +14,7 @@ import io
 import re
 
 from src.hotkeys import kernel32, user32
-from src.config import ToonConfig
-
+# from src.config import ToonConfig  <-- REMOVED: Config is now passed in directly
 
 class ScreenshotSession:
     def __init__(self, config_data, callback_queue):

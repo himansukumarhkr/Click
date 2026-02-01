@@ -3,14 +3,10 @@ import sys
 import ctypes
 
 def resource_path(relative_path):
-    """ Get absolute path to resource, works for dev, Nuitka, and PyInstaller """
+    """ Get absolute path to resource, works for dev and PyInstaller """
     if hasattr(sys, '_MEIPASS'):
         # PyInstaller: Data files are extracted to sys._MEIPASS
         base_path = sys._MEIPASS
-    elif hasattr(sys, 'frozen'):
-        # Nuitka Onefile: Data files are extracted to a temp dir.
-        # __file__ points to the script inside that temp dir.
-        base_path = os.path.dirname(os.path.abspath(__file__))
     else:
         # Dev mode: src/utils.py is in src/
         base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
