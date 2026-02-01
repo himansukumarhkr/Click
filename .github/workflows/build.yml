@@ -51,17 +51,7 @@ jobs:
       - name: Build executable (PyInstaller)
         shell: powershell
         run: |
-          pyinstaller --noconfirm --onefile --windowed `
-            --name "Click!" `
-            --paths . `
-            --icon "src/assets/app_icon.ico" `
-            --add-data "src/assets;src/assets" `
-            --splash "src/assets/splash.png" `
-            --hidden-import "PIL" `
-            --hidden-import "PIL._tkinter_finder" `
-            --hidden-import "customtkinter" `
-            --collect-all "customtkinter" `
-            click_launcher.py
+          pyinstaller --noconfirm "Click!.spec"
 
       # -----------------------------
       # Rename output
