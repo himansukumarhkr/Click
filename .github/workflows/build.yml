@@ -99,13 +99,13 @@ jobs:
           VT_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
         run: |
           $files = @(
-            'Click'"'"'!.exe',
+            'Click!.exe',
             'Click!.exe.sha256',
             'README.md',
             'README.md.sha256',
             'LICENSE.md',
             'LICENSE.md.sha256',
-            'Click'"'"' - Guide.pdf',
+            'Click! - Guide.pdf',
             'Click! - Guide.pdf.sha256'
           )
 
