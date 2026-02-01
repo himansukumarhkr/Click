@@ -5,9 +5,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Set Version Number (e.g., 1.0.0)'
+        description: "Set Version Number (e.g., 1.0.0)"
         required: true
-        default: '1.0.0'
+        default: "1.0.0"
         type: string
 
 jobs:
@@ -18,23 +18,23 @@ jobs:
       actions: write
 
     steps:
-      - name: Checkout Code
+      - name: "Checkout Code"
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set up Python 3.12
+      - name: "Set up Python 3.12"
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-          cache: 'pip'
+          python-version: "3.12"
+          cache: "pip"
 
-      - name: Install Dependencies
+      - name: "Install Dependencies"
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
 
-      - name: Build Standalone Executable
+      - name: "Build Standalone Executable"
         shell: powershell
         run: |
           python -m nuitka --standalone --onefile --windows-console-mode=disable `
@@ -51,30 +51,30 @@ jobs:
           --windows-product-version="${{ github.event.inputs.version }}" `
           "src/main.py"
 
-      - name: Rename Output
+      - name: "Rename Output"
         shell: powershell
         run: |
           Move-Item -Path "main.exe" -Destination "Click!.exe" -Force
 
-      - name: Upload Temporary Artifact
+      - name: "Upload Temporary Artifact"
         uses: actions/upload-artifact@v4
         with:
-          name: Click_Temp_Build
+          name: "Click_Temp_Build"
           path: "Click!.exe"
           retention-days: 1
 
-      - name: VirusTotal Scan
+      - name: "VirusTotal Scan"
         id: vt_scan
         uses: crazy-max/ghaction-virustotal@v4
         with:
           vt_api_key: ${{ secrets.VIRUSTOTAL_API_KEY }}
           files: |
             "Click!.exe"
-            LICENSE.md
-            README.md
+            "LICENSE.md"
+            "README.md"
             "Click! - Guide.pdf"
 
-      - name: Create GitHub Release
+      - name: "Create GitHub Release"
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "v${{ github.event.inputs.version }}"
@@ -93,13 +93,13 @@ jobs:
             - [Documentation Analysis](${{ fromJson(steps.vt_scan.outputs.analysis).Click_Guide_pdf.url }})
           files: |
             "Click!.exe"
-            LICENSE.md
-            README.md
+            "LICENSE.md"
+            "README.md"
             "Click! - Guide.pdf"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Delete Temporary Artifacts
+      - name: "Delete Temporary Artifacts"
         uses: geekyeggo/delete-artifact@v5
         with:
-          name: Click_Temp_Build
+          name: "Click_Temp_Build"
