@@ -116,6 +116,11 @@ jobs:
             exit 1
           }
 
+          $reportFile = "vt_scan_results.txt"
+          New-Item -ItemType File -Path $reportFile -Force
+          Add-Content -Path $reportFile -Value "VirusTotal Scan Results - Click! v${{ github.event.inputs.version }}"
+          Add-Content -Path $reportFile -Value "------------------------------------------------------------"
+
           $batchSize = 3
           $delaySeconds = 70
 
@@ -144,7 +149,18 @@ jobs:
                 exit 1
               }
 
-              Write-Host ("✓ Uploaded " + $file)
+              try {
+                $json = $response | ConvertFrom-Json
+                $id = $json.data.id
+                $link = "https://www.virustotal.com/gui/file-analysis/$id"
+                $line = "$file : $link"
+                Add-Content -Path $reportFile -Value $line
+                Write-Host ("✓ Uploaded " + $file + ". Report: " + $link)
+              } catch {
+                Write-Warning "Could not parse VT response for $file"
+                Write-Host $response
+                Add-Content -Path $reportFile -Value "$file : Uploaded (Link unavailable)"
+              }
             }
 
             if ($i + $batchSize -lt $files.Count) {
@@ -153,7 +169,7 @@ jobs:
             }
           }
 
-          Write-Host 'All files uploaded to VirusTotal successfully.'
+          Write-Host 'All files uploaded to VirusTotal successfully. Report generated.'
 
       # -----------------------------
       # GitHub Release
@@ -173,6 +189,7 @@ jobs:
             ### Security
             - SHA256 checksums included
             - Files uploaded to VirusTotal (batched, rate-safe)
+            - Scan results attached as `vt_scan_results.txt`
 
           files: |
             Click!.exe
@@ -180,5 +197,6 @@ jobs:
             README.md
             LICENSE.md
             "Click! - Guide.pdf"
+            vt_scan_results.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
