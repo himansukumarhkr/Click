@@ -237,17 +237,6 @@ class ModernUI(ctk.CTk):
                      text_color=self.ui_colors["text_sec"],
                      font=ctk.CTkFont(size=11)).grid(row=7, column=0)
 
-        self.notif = ctk.CTkToplevel(self)
-        self.notif.withdraw()
-        self.notif.overrideredirect(True)
-        self.notif.attributes("-topmost", True)
-        self.notif_frame = ctk.CTkFrame(self.notif, fg_color=self.ui_colors["bg_sidebar"], corner_radius=10,
-                                        border_width=1, border_color="gray")
-        self.notif_frame.pack(fill="both", expand=True)
-        self.notif_label = ctk.CTkLabel(self.notif_frame, text="", font=ctk.CTkFont(size=13, weight="bold"),
-                                        text_color=self.ui_colors["text"])
-        self.notif_label.pack(expand=True, padx=20, pady=10)
-
         self.load_defaults()
 
         # --- BRANDING FIX ---
