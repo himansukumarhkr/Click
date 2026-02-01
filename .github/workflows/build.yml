@@ -68,6 +68,8 @@ jobs:
             --windows-file-description="Professional Screenshot Automation Utility" `
             --windows-file-version="${{ github.event.inputs.version }}" `
             --windows-product-version="${{ github.event.inputs.version }}" `
+            --windows-legal-copyright="Copyright (c) 2024 Himansu Kumar" `
+            --windows-legal-trademarks="Click! is a trademark of Himansu Kumar" `
             --output-dir=dist `
             src/main.py
 
