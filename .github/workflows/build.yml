@@ -1,4 +1,4 @@
-name: "🚀 Build Click! Pack"
+name: "Click!"
 run-name: "Build v${{ github.event.inputs.version }} by @${{ github.actor }}"
 
 on:
@@ -14,11 +14,14 @@ jobs:
   build:
     runs-on: windows-latest
     permissions:
-      contents: write # Essential for creating the Release and uploading assets
+      contents: write
+      actions: write
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -34,8 +37,6 @@ jobs:
       - name: Build Standalone Executable
         shell: powershell
         run: |
-          # The --assume-yes flag handles the depends22 download automatically
-          # We omit --windows-uac-admin to ensure it runs without admin rights on VDIs
           python -m nuitka --standalone --onefile --windows-console-mode=disable `
           --enable-plugin=tk-inter --include-package=customtkinter `
           --jobs=2 --low-memory --assume-yes-for-downloads `
@@ -53,22 +54,43 @@ jobs:
       - name: Rename Output
         shell: powershell
         run: |
-          # Use Move-Item for reliable renaming in PowerShell
           Move-Item -Path "main.exe" -Destination "Click!.exe" -Force
+
+      - name: Upload Temporary Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Click_Temp_Build
+          path: Click!.exe
+          retention-days: 1
+
+      - name: VirusTotal Scan
+        id: vt_scan
+        uses: crazy-max/ghaction-virustotal@v4
+        with:
+          vt_api_key: ${{ secrets.VIRUSTOTAL_API_KEY }}
+          files: |
+            Click!.exe
+            LICENSE.md
+            README.md
+            Click! - Guide.pdf
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "v${{ github.event.inputs.version }}"
-          name: "Click! v${{ github.event.inputs.version }}"
+          name: "Click!"
+          make_latest: true
           body: |
-            ## Click! Screenshot Tool
-            VDI-Optimized Release.
+            ## Click!
             
             **Release Details:**
             - Version: ${{ github.event.inputs.version }}
-            - Environment: Windows (No Admin Required)
+            - Environment: Windows
             - UI: High-DPI Aware & Splash Screen enabled
+            
+            **🔒 Security Verification (VirusTotal):**
+            - [Click!.exe Analysis](${{ fromJson(steps.vt_scan.outputs.analysis).Click_exe.url }})
+            - [Documentation Analysis](${{ fromJson(steps.vt_scan.outputs.analysis).Click_Guide_pdf.url }})
           files: |
             Click!.exe
             LICENSE.md
@@ -76,3 +98,8 @@ jobs:
             Click! - Guide.pdf
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Delete Temporary Artifacts
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: Click_Temp_Build
