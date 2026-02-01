@@ -13,22 +13,17 @@ jobs:
   build:
     runs-on: windows-latest
 
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: [x64, arm64]
-
     permissions:
       contents: write
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Python 3.12 (${{ matrix.arch }})
+      - name: Setup Python 3.12 (x64)
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          architecture: ${{ matrix.arch }}
+          architecture: x64
           cache: pip
 
       - name: Install dependencies
@@ -37,6 +32,9 @@ jobs:
           pip install -r requirements.txt
           pip install nuitka cyclonedx-bom
 
+      # -----------------------------
+      # FIRST BUILD
+      # -----------------------------
       - name: Build #1
         shell: powershell
         run: |
@@ -62,6 +60,9 @@ jobs:
           $exe = Get-ChildItem build1 -Recurse -Filter *.exe | Select-Object -First 1
           Copy-Item $exe.FullName Click-A.exe -Force
 
+      # -----------------------------
+      # SECOND BUILD (clean)
+      # -----------------------------
       - name: Clean environment
         shell: powershell
         run: |
@@ -93,6 +94,9 @@ jobs:
           $exe = Get-ChildItem build2 -Recurse -Filter *.exe | Select-Object -First 1
           Copy-Item $exe.FullName Click-B.exe -Force
 
+      # -----------------------------
+      # REPRODUCIBLE VERIFICATION
+      # -----------------------------
       - name: Verify reproducible build
         shell: powershell
         run: |
@@ -109,11 +113,17 @@ jobs:
 
           Write-Host "✅ Reproducible build verified"
 
+      # -----------------------------
+      # FINAL OUTPUT
+      # -----------------------------
       - name: Normalize output
         shell: powershell
         run: |
-          Copy-Item Click-A.exe "Click!-${{ matrix.arch }}.exe" -Force
+          Copy-Item Click-A.exe "Click!.exe" -Force
 
+      # -----------------------------
+      # SIGN (OPTIONAL / EV READY)
+      # -----------------------------
       - name: Code signing
         shell: powershell
         continue-on-error: true
@@ -122,28 +132,31 @@ jobs:
             /fd SHA256 `
             /td SHA256 `
             /tr http://timestamp.digicert.com `
-            "Click!-${{ matrix.arch }}.exe"
+            "Click!.exe"
 
+      # -----------------------------
+      # SHA256 + SBOM
+      # -----------------------------
       - name: Generate SHA256
         shell: powershell
         run: |
-          Get-FileHash "Click!-${{ matrix.arch }}.exe" -Algorithm SHA256 |
+          Get-FileHash "Click!.exe" -Algorithm SHA256 |
           ForEach-Object {
-            "$($_.Hash)  Click!-${{ matrix.arch }}.exe"
-          } | Out-File "Click!-${{ matrix.arch }}.sha256" -Encoding ascii
+            "$($_.Hash)  Click!.exe"
+          } | Out-File "Click!.exe.sha256" -Encoding ascii
 
       - name: Generate SBOM
         shell: powershell
         run: |
-          cyclonedx-py -r -i requirements.txt -o "sbom-${{ matrix.arch }}.json"
+          cyclonedx-py -r -i requirements.txt -o "sbom.json"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Click-${{ matrix.arch }}
+          name: Click-x64
           path: |
-            Click!-${{ matrix.arch }}.exe
-            Click!-${{ matrix.arch }}.sha256
-            sbom-${{ matrix.arch }}.json
+            Click!.exe
+            Click!.exe.sha256
+            sbom.json
 
   release:
     needs: build
