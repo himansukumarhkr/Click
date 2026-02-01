@@ -73,7 +73,7 @@ jobs:
           certutil -hashfile "Click! - Guide.pdf" SHA256 > "Click! - Guide.pdf.sha256"
 
       # -----------------------------
-      # VirusTotal batched scan
+      # VirusTotal batched scan (inline, escaped !)
       # -----------------------------
       - name: VirusTotal scan (batched, 3 files max)
         shell: powershell
@@ -81,10 +81,10 @@ jobs:
           VT_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
         run: |
           $files = @(
-            'Click!.exe',
+            'Click'"'"'!.exe',         # escape ! for YAML
             'README.md',
             'LICENSE.md',
-            'Click! - Guide.pdf'
+            'Click'"'"' - Guide.pdf'   # escape ! for YAML
           )
 
           if (-not $env:VT_API_KEY) {
