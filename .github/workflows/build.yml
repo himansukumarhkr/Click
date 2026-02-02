@@ -90,9 +90,11 @@ jobs:
           
           # Copy files to the package folder
           Copy-Item "Click!.exe" "release_package/"
-          Copy-Item "README.md" "release_package/"
-          Copy-Item "LICENSE.md" "release_package/"
-          Copy-Item "Click! - Guide.pdf" "release_package/"
+          
+          # Check if these files exist before copying to avoid errors
+          if (Test-Path "README.md") { Copy-Item "README.md" "release_package/" }
+          if (Test-Path "LICENSE.md") { Copy-Item "LICENSE.md" "release_package/" }
+          if (Test-Path "Click! - Guide.pdf") { Copy-Item "Click! - Guide.pdf" "release_package/" }
           
           # Create the ZIP file
           Compress-Archive -Path "release_package/*" -DestinationPath $zipName
@@ -104,55 +106,53 @@ jobs:
       # VirusTotal Scan (ZIP only)
       # -----------------------------
       - name: VirusTotal scan (ZIP only)
+        id: vt  # <--- IMPORTANT: We gave this step an ID to reference it later
         shell: pwsh
         env:
           VT_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
         run: |
           $version = "${{ github.event.inputs.version }}"
           $zipName = "Click!-v$version.zip"
-          $files = @($zipName)
 
           if (-not $env:VT_API_KEY) {
             Write-Error 'VirusTotal API key not set'
             exit 1
           }
 
-          $reportFile = "vt_scan_results.txt"
-          New-Item -ItemType File -Path $reportFile -Force
-          Add-Content -Path $reportFile -Value "VirusTotal Scan Results - Click! v$version"
-          Add-Content -Path $reportFile -Value "------------------------------------------------------------"
+          if (-not (Test-Path $zipName)) {
+            Write-Error ("File not found: " + $zipName)
+            exit 1
+          }
 
-          foreach ($file in $files) {
-            if (-not (Test-Path $file)) {
-              Write-Error ("File not found: " + $file)
-              exit 1
-            }
+          Write-Host ("→ Uploading " + $zipName + " to VirusTotal")
 
-            Write-Host ("→ Uploading " + $file + " to VirusTotal")
+          $response = curl.exe `
+            -s `
+            -X POST "https://www.virustotal.com/api/v3/files" `
+            -H ("x-apikey: " + $env:VT_API_KEY) `
+            -F ("file=@" + '"' + $zipName + '"')
 
-            $response = curl.exe `
-              -s `
-              -X POST "https://www.virustotal.com/api/v3/files" `
-              -H ("x-apikey: " + $env:VT_API_KEY) `
-              -F ("file=@" + '"' + $file + '"')
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error ("VirusTotal upload failed for " + $zipName)
+            exit 1
+          }
 
-            if ($LASTEXITCODE -ne 0) {
-              Write-Error ("VirusTotal upload failed for " + $file)
-              exit 1
-            }
+          try {
+            $json = $response | ConvertFrom-Json
+            $id = $json.data.id
+            $link = "https://www.virustotal.com/gui/file-analysis/$id"
+            
+            Write-Host ("✓ Uploaded successfully. Link: " + $link)
+            
+            # --- THIS IS THE MAGIC LINE ---
+            # It saves the link so the next step (Release) can read it
+            "VT_LINK=$link" >> $env:GITHUB_OUTPUT
+            # ------------------------------
 
-            try {
-              $json = $response | ConvertFrom-Json
-              $id = $json.data.id
-              $link = "https://www.virustotal.com/gui/file-analysis/$id"
-              $line = "$file : $link"
-              Add-Content -Path $reportFile -Value $line
-              Write-Host ("✓ Uploaded " + $file + ". Report: " + $link)
-            } catch {
-              Write-Warning "Could not parse VT response for $file"
-              Write-Host $response
-              Add-Content -Path $reportFile -Value "$file : Uploaded (Link unavailable)"
-            }
+          } catch {
+            Write-Warning "Could not parse VT response."
+            Write-Host $response
+            "VT_LINK=https://www.virustotal.com/gui/" >> $env:GITHUB_OUTPUT
           }
 
       # -----------------------------
@@ -164,6 +164,7 @@ jobs:
           tag_name: "v${{ github.event.inputs.version }}"
           name: "Click! v${{ github.event.inputs.version }}"
           make_latest: true
+          # Here we inject the link from the previous step
           body: |
             ## Click!
 
@@ -172,12 +173,10 @@ jobs:
 
             ### Security
             - SHA256 checksums included
-            - **ZIP Archive scanned on VirusTotal**
-            - Scan results attached as `vt_scan_results.txt`
+            - **VirusTotal Scan:** ${{ steps.vt.outputs.VT_LINK }}
 
           files: |
             Click!-v${{ github.event.inputs.version }}.zip
             Click!-v${{ github.event.inputs.version }}.zip.sha256
-            vt_scan_results.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

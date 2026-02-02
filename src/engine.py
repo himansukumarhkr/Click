@@ -13,7 +13,6 @@ from PIL import Image, ImageGrab
 from docx import Document
 from docx.shared import Inches
 
-# Import Windows API for clipboard operations
 from src.hotkeys import kernel32, user32
 
 class ScreenshotSession:
@@ -35,7 +34,6 @@ class ScreenshotSession:
         self.is_running = True
         self.status = "Active"
         
-        # Queues for background workers
         self.save_queue = queue.Queue()
         self.clipboard_queue = queue.Queue()
         
@@ -182,7 +180,6 @@ class ScreenshotSession:
                 shutil.copyfile(image_path, os.path.join(self.current_filepath, filename))
                 self.last_size_str = self._get_folder_size(self.current_filepath)
             else:
-                # Check for file rotation
                 if os.path.exists(self.current_filepath) and self.max_size_bytes > 0:
                     current_size = os.path.getsize(self.current_filepath)
                     if (current_size + os.path.getsize(image_path)) > self.max_size_bytes:
@@ -191,7 +188,6 @@ class ScreenshotSession:
                 if not self.document:
                     self.document = Document(self.current_filepath)
 
-                # Construct caption
                 caption = ""
                 if window_title and self.config['append_num']:
                     caption = f"{window_title} {count}"
@@ -238,13 +234,11 @@ class ScreenshotSession:
             
             elif self.document and len(self.document.paragraphs) >= 2:
                 try:
-                    # Remove last 3 elements (Paragraph, Image, Separator)
                     removed_count = 0
                     while removed_count < 3 and self.document.paragraphs:
                         p = self.document.paragraphs[-1]
                         p._element.getparent().remove(p._element)
                         removed_count += 1
-                        # Stop if we hit a non-separator paragraph that has text
                         if removed_count == 1 and "-" not in p.text and len(p.text) > 0:
                             break
                     
@@ -324,7 +318,6 @@ class ScreenshotSession:
             buff = ctypes.create_unicode_buffer(length + 1)
             user32.GetWindowTextW(hwnd, buff, length + 1)
             title = buff.value
-            # Clean up common browser suffixes
             return title.replace(" - Google Chrome", "").replace(" - Microsoft Edge", "")
         except Exception:
             return "Unknown"
@@ -372,7 +365,7 @@ class ScreenshotSession:
                 data = output.getvalue()[14:]
                 output.close()
                 
-                h_bitmap = kernel32.GlobalAlloc(0x0042, len(data)) # GMEM_MOVEABLE | GMEM_ZEROINIT
+                h_bitmap = kernel32.GlobalAlloc(0x0042, len(data))
                 if h_bitmap:
                     ptr = kernel32.GlobalLock(h_bitmap)
                     ctypes.memmove(ptr, data, len(data))
@@ -385,22 +378,20 @@ class ScreenshotSession:
                 h_drop = kernel32.GlobalAlloc(0x0042, 20 + len(files_data))
                 if h_drop:
                     ptr = kernel32.GlobalLock(h_drop)
-                    # DROPFILES structure
                     header = b'\x14\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00'
                     ctypes.memmove(ptr, header, 20)
                     ctypes.memmove(ptr + 20, files_data, len(files_data))
                     kernel32.GlobalUnlock(h_drop)
 
-            # Retry loop for clipboard access
             success = False
             for _ in range(10):
                 if user32.OpenClipboard(None):
                     try:
                         user32.EmptyClipboard()
                         if h_bitmap:
-                            user32.SetClipboardData(8, h_bitmap) # CF_DIB
+                            user32.SetClipboardData(8, h_bitmap)
                         if h_drop:
-                            user32.SetClipboardData(15, h_drop) # CF_HDROP
+                            user32.SetClipboardData(15, h_drop)
                         success = True
                     finally:
                         user32.CloseClipboard()
