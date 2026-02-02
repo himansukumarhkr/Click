@@ -51,7 +51,17 @@ jobs:
       - name: Build executable (PyInstaller)
         shell: powershell
         run: |
-          pyinstaller --noconfirm "Click!.spec"
+          pyinstaller --noconfirm --onefile --windowed `
+            --name "Click!" `
+            --paths . `
+            --icon "src/assets/app_icon.ico" `
+            --add-data "src/assets;src/assets" `
+            --splash "src/assets/splash.png" `
+            --hidden-import "PIL" `
+            --hidden-import "PIL._tkinter_finder" `
+            --hidden-import "customtkinter" `
+            --collect-all "customtkinter" `
+            src/main.py
 
       # -----------------------------
       # Rename output
@@ -67,34 +77,40 @@ jobs:
           }
 
       # -----------------------------
-      # Generate SHA256 checksums
+      # Create ZIP Archive
       # -----------------------------
-      - name: Generate SHA256 checksums
+      - name: Create ZIP Archive
         shell: powershell
         run: |
-          certutil -hashfile "Click!.exe" SHA256 > Click!.exe.sha256
-          certutil -hashfile "README.md" SHA256 > README.md.sha256
-          certutil -hashfile "LICENSE.md" SHA256 > LICENSE.md.sha256
-          certutil -hashfile "Click! - Guide.pdf" SHA256 > "Click! - Guide.pdf.sha256"
+          $version = "${{ github.event.inputs.version }}"
+          $zipName = "Click!-v$version.zip"
+          
+          # Create a temporary folder for zipping
+          New-Item -ItemType Directory -Force -Path "release_package"
+          
+          # Copy files to the package folder
+          Copy-Item "Click!.exe" "release_package/"
+          Copy-Item "README.md" "release_package/"
+          Copy-Item "LICENSE.md" "release_package/"
+          Copy-Item "Click! - Guide.pdf" "release_package/"
+          
+          # Create the ZIP file
+          Compress-Archive -Path "release_package/*" -DestinationPath $zipName
+          
+          # Generate SHA256 for the ZIP
+          certutil -hashfile $zipName SHA256 > "$zipName.sha256"
 
       # -----------------------------
-      # VirusTotal batched scan
+      # VirusTotal Scan (ZIP only)
       # -----------------------------
-      - name: VirusTotal scan (batched, including SHA256)
+      - name: VirusTotal scan (ZIP only)
         shell: pwsh
         env:
           VT_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
         run: |
-          $files = @(
-            'Click!.exe',
-            'Click!.exe.sha256',
-            'README.md',
-            'README.md.sha256',
-            'LICENSE.md',
-            'LICENSE.md.sha256',
-            'Click! - Guide.pdf',
-            'Click! - Guide.pdf.sha256'
-          )
+          $version = "${{ github.event.inputs.version }}"
+          $zipName = "Click!-v$version.zip"
+          $files = @($zipName)
 
           if (-not $env:VT_API_KEY) {
             Write-Error 'VirusTotal API key not set'
@@ -103,58 +119,41 @@ jobs:
 
           $reportFile = "vt_scan_results.txt"
           New-Item -ItemType File -Path $reportFile -Force
-          Add-Content -Path $reportFile -Value "VirusTotal Scan Results - Click! v${{ github.event.inputs.version }}"
+          Add-Content -Path $reportFile -Value "VirusTotal Scan Results - Click! v$version"
           Add-Content -Path $reportFile -Value "------------------------------------------------------------"
 
-          $batchSize = 3
-          $delaySeconds = 70
-
-          for ($i = 0; $i -lt $files.Count; $i += $batchSize) {
-            $endIndex = [Math]::Min($i + $batchSize - 1, $files.Count - 1)
-            $batch = $files[$i..$endIndex]
-
-            Write-Host ("Uploading batch: " + ($batch -join ', '))
-
-            foreach ($file in $batch) {
-              if (-not (Test-Path $file)) {
-                Write-Error ("File not found: " + $file)
-                exit 1
-              }
-
-              Write-Host ("→ Uploading " + $file + " to VirusTotal")
-
-              $response = curl.exe `
-                -s `
-                -X POST "https://www.virustotal.com/api/v3/files" `
-                -H ("x-apikey: " + $env:VT_API_KEY) `
-                -F ("file=@" + '"' + $file + '"')
-
-              if ($LASTEXITCODE -ne 0) {
-                Write-Error ("VirusTotal upload failed for " + $file)
-                exit 1
-              }
-
-              try {
-                $json = $response | ConvertFrom-Json
-                $id = $json.data.id
-                $link = "https://www.virustotal.com/gui/file-analysis/$id"
-                $line = "$file : $link"
-                Add-Content -Path $reportFile -Value $line
-                Write-Host ("✓ Uploaded " + $file + ". Report: " + $link)
-              } catch {
-                Write-Warning "Could not parse VT response for $file"
-                Write-Host $response
-                Add-Content -Path $reportFile -Value "$file : Uploaded (Link unavailable)"
-              }
+          foreach ($file in $files) {
+            if (-not (Test-Path $file)) {
+              Write-Error ("File not found: " + $file)
+              exit 1
             }
 
-            if ($i + $batchSize -lt $files.Count) {
-              Write-Host ("Waiting " + $delaySeconds + " seconds before next batch...")
-              Start-Sleep -Seconds $delaySeconds
+            Write-Host ("→ Uploading " + $file + " to VirusTotal")
+
+            $response = curl.exe `
+              -s `
+              -X POST "https://www.virustotal.com/api/v3/files" `
+              -H ("x-apikey: " + $env:VT_API_KEY) `
+              -F ("file=@" + '"' + $file + '"')
+
+            if ($LASTEXITCODE -ne 0) {
+              Write-Error ("VirusTotal upload failed for " + $file)
+              exit 1
+            }
+
+            try {
+              $json = $response | ConvertFrom-Json
+              $id = $json.data.id
+              $link = "https://www.virustotal.com/gui/file-analysis/$id"
+              $line = "$file : $link"
+              Add-Content -Path $reportFile -Value $line
+              Write-Host ("✓ Uploaded " + $file + ". Report: " + $link)
+            } catch {
+              Write-Warning "Could not parse VT response for $file"
+              Write-Host $response
+              Add-Content -Path $reportFile -Value "$file : Uploaded (Link unavailable)"
             }
           }
-
-          Write-Host 'All files uploaded to VirusTotal successfully. Report generated.'
 
       # -----------------------------
       # GitHub Release
@@ -173,15 +172,12 @@ jobs:
 
             ### Security
             - SHA256 checksums included
-            - Files uploaded to VirusTotal (batched, rate-safe)
+            - **ZIP Archive scanned on VirusTotal**
             - Scan results attached as `vt_scan_results.txt`
 
           files: |
-            Click!.exe
-            *.sha256
-            README.md
-            LICENSE.md
-            "Click! - Guide.pdf"
+            Click!-v${{ github.event.inputs.version }}.zip
+            Click!-v${{ github.event.inputs.version }}.zip.sha256
             vt_scan_results.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
