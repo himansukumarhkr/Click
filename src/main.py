@@ -2,9 +2,19 @@ import customtkinter as ctk
 import tkinter as tk
 from tkinter import filedialog, ttk, messagebox
 import os, datetime, threading, tempfile, shutil, queue, sys, ctypes
-from src.utils import resource_path, set_dpi_awareness
 from src.hotkeys import HotkeyListener
 from src.engine import ScreenshotSession
+
+def resource_path(relative_path):
+    base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    p = os.path.join(base, "src", relative_path)
+    return p if os.path.exists(p) else os.path.join(base, relative_path)
+
+def set_dpi_awareness():
+    for f in [lambda: ctypes.windll.shcore.SetProcessDpiAwareness(2), lambda: ctypes.windll.user32.SetProcessDPIAware()]:
+        try: f(); break
+        except: pass
+
 class ToonConfig:
     @staticmethod
     def load(fp):
