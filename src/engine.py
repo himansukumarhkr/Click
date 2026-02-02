@@ -7,463 +7,421 @@ import queue
 import time
 import io
 import re
+from typing import Optional, List, Dict
+
 from PIL import Image, ImageGrab
 from docx import Document
 from docx.shared import Inches
 
-# Windows API access from hotkeys module
+# Import Windows API for clipboard operations
 from src.hotkeys import kernel32, user32
-
-# Clipboard and memory constants
-GMEM_MOVEABLE = 0x0002
-GMEM_ZEROINIT = 0x0040
-GHND = GMEM_MOVEABLE | GMEM_ZEROINIT  # 0x0042
-
-# Clipboard formats
-CF_DIB = 8
-CF_HDROP = 15
 
 class ScreenshotSession:
     """
-    Manages a single screenshot session, handling image capture, 
-    storage (Folder or Word), and clipboard operations.
+    Manages a single screenshot session.
+    Handles capturing images, saving to Word/Folder, and clipboard operations.
     """
-    def __init__(self, config, message_queue):
+    def __init__(self, config: Dict, gui_callback_queue: queue.Queue):
         self.config = config
-        self.message_queue = message_queue
-        
-        # Session naming and paths
-        self.base_name = ""
-        self.current_filename = ""
-        self.counter = 0
+        self.gui_queue = gui_callback_queue
+
+        self.base_filename = ""
+        self.current_filepath = ""
+        self.screenshot_count = 0
         self.max_size_bytes = 0
-        self.image_paths = []
+        self.captured_images = []
         self.temp_dir = None
-        self.docx_document = None
-        
-        # Operation state and threading
+        self.document = None
         self.is_running = True
         self.status = "Active"
-        self.session_queue = queue.Queue()    # For sequential tasks (saving, undoing)
-        self.clipboard_queue = queue.Queue()  # For clipboard auto-copy tasks
-        self.worker_thread = None
+        
+        # Queues for background workers
+        self.save_queue = queue.Queue()
+        self.clipboard_queue = queue.Queue()
+        
+        self.save_thread = None
         self.clipboard_thread = None
-        
-        # UI Feedback and locking
+
         self.warning_shown = False
-        self.size_string = "0 KB"
-        self.lock = threading.Lock()
-        
+        self.last_size_str = "0 KB"
+
         self._initialize_session()
+        self.session_id = self.current_filepath
 
     def _initialize_session(self):
-        """Prepares session environment: directories, files, and worker threads."""
+        """Sets up the save directory and initial file."""
         save_dir = self.config['save_dir']
-        filename = self.config['filename']
-        save_mode = self.config['save_mode']
-        
-        # Ensure destination directory exists
-        os.makedirs(save_dir, exist_ok=True)
-        base_path = os.path.join(save_dir, filename)
-        
-        if save_mode == 'folder':
-            # Create a unique directory for images
-            self.current_filename = self._find_unique_path(base_path)
-            self.base_name = os.path.basename(self.current_filename)
-            os.makedirs(self.current_filename, exist_ok=True)
-        else:
-            # Create a unique Word document
-            self.current_filename, self.base_name = self._find_unique_path(base_path, ".docx")
-            self.docx_document = Document()
+        filename_input = self.config['filename']
+
+        if not os.path.exists(save_dir):
             try:
-                self.docx_document.save(self.current_filename)
-            except Exception:
+                os.makedirs(save_dir)
+            except OSError:
                 pass
-        
-        # Parse maximum file size (for Word mode rotation)
+
+        full_path = os.path.join(save_dir, filename_input)
+
+        if self.config['save_mode'] == 'folder':
+            if not os.path.exists(full_path):
+                self.current_filepath = full_path
+            else:
+                self.current_filepath = self._get_unique_path(full_path)
+            
+            self.base_filename = os.path.basename(self.current_filepath)
+            if not os.path.exists(self.current_filepath):
+                os.makedirs(self.current_filepath)
+        else:
+            self.current_filepath, self.base_filename = self._get_unique_file(save_dir, filename_input)
+            self.document = Document()
+            try:
+                self.document.save(self.current_filepath)
+            except OSError:
+                pass
+
         try:
-            # Convert MB string from config to bytes
-            max_size_mb = float(self.config.get('max_size', 0))
-            self.max_size_bytes = int(max_size_mb * 1024 * 1024)
+            self.max_size_bytes = int(float(self.config['max_size']) * 1024 * 1024)
         except (ValueError, TypeError):
             self.max_size_bytes = 0
-            
-        # Create a temporary directory for this session's assets
+
         self.temp_dir = tempfile.mkdtemp(prefix="Click_")
-        
-        # Start background processing loops
-        self._start_threads()
+        self._start_workers()
 
-    def _find_unique_path(self, path, extension=""):
-        """Iteratively finds a non-existent path by appending a counter suffix."""
-        for i in range(1000):
-            suffix = "" if i == 0 else f"_{i}"
-            candidate_path = f"{path}{suffix}"
-            full_path = f"{candidate_path}{extension}"
-            
-            if not os.path.exists(full_path):
-                if extension:
-                    # For files, return both the full path and the name without extension
-                    return full_path, os.path.basename(candidate_path)
-                return full_path
-        
-        # Fallback in extreme cases
-        return f"{path}_overflow{extension}"
+    def _get_unique_path(self, path: str) -> str:
+        counter = 1
+        while True:
+            new_path = f"{path}_{counter}"
+            if not os.path.exists(new_path):
+                return new_path
+            counter += 1
 
-    def _start_threads(self):
-        """Spawns worker threads if they are not already running."""
-        if not self.worker_thread or not self.worker_thread.is_alive():
-            self.worker_thread = threading.Thread(target=self._process_session_queue, daemon=True)
-            self.worker_thread.start()
-            
+    def _get_unique_file(self, directory: str, name: str):
+        counter = 0
+        while True:
+            new_name = name if counter == 0 else f"{name}_{counter}"
+            file_path = os.path.join(directory, new_name + ".docx")
+            if not os.path.exists(file_path):
+                return file_path, new_name
+            counter += 1
+
+    def _start_workers(self):
+        if not self.save_thread or not self.save_thread.is_alive():
+            self.save_thread = threading.Thread(target=self._save_worker, daemon=True)
+            self.save_thread.start()
+
         if not self.clipboard_thread or not self.clipboard_thread.is_alive():
-            self.clipboard_thread = threading.Thread(target=self._process_clipboard_queue, daemon=True)
+            self.clipboard_thread = threading.Thread(target=self._clipboard_worker, daemon=True)
             self.clipboard_thread.start()
 
     def stop(self):
-        """Stops the session loops."""
         self.is_running = False
+        if self.document:
+            try:
+                self.document.save(self.current_filepath)
+            except OSError:
+                pass
 
     def capture(self):
-        """Triggers a screenshot capture and queues it for the session."""
         if not self.is_running:
             return
-            
+        
         try:
-            # Multi-screen grab
-            screenshot = ImageGrab.grab(all_screens=True)
+            image = ImageGrab.grab(all_screens=True)
         except Exception:
             return
-            
-        self.counter += 1
-        
-        # Identify the active window for annotation
-        window_title = None
-        if self.config['log_title']:
-            window_title = self._get_active_window_title()
-            
-        # Optional: Auto-copy the individual screenshot to the clipboard
+
+        self.screenshot_count += 1
+        window_title = self._get_active_window_title() if self.config['log_title'] else None
+
+        self.gui_queue.put(("NOTIFY", self.current_filepath, self.screenshot_count, self.last_size_str))
+
         if self.config['auto_copy']:
-            clip_filename = f"clip_{self.counter}.jpg"
-            clip_path = os.path.join(self.temp_dir, clip_filename)
-            self.clipboard_queue.put((screenshot, clip_path))
-            
-        # Queue the image for permanent session storage
-        self.session_queue.put((screenshot, self.counter, window_title))
+            temp_path = os.path.join(self.temp_dir, f"clip_{self.screenshot_count}.jpg")
+            self.clipboard_queue.put((image, temp_path))
+
+        self.save_queue.put((image, self.screenshot_count, window_title))
 
     def undo(self):
-        """Queues an 'undo' command to remove the most recent capture."""
         if self.is_running:
-            self.session_queue.put(("UNDO", None, None))
+            self.save_queue.put(("UNDO", None, None))
 
     def manual_rotate(self):
-        """Queues a command to start a new Word document part."""
         if self.config['save_mode'] != "folder":
-            self.session_queue.put(("ROTATE", None, None))
+            self._rotate_file()
 
-    def _process_session_queue(self):
-        """Background loop to handle disk and document operations sequentially."""
-        while self.is_running or not self.session_queue.empty():
+    def _save_worker(self):
+        while True:
             try:
-                # Fetch command from queue
-                item = self.session_queue.get(timeout=0.1)
-                command = item[0]
-                
-                if command == "UNDO":
+                try:
+                    task = self.save_queue.get(timeout=0.1)
+                except queue.Empty:
+                    if not self.is_running and self.save_queue.empty():
+                        break
+                    continue
+
+                if task[0] == "UNDO":
                     self._perform_undo()
-                elif command == "ROTATE":
-                    self._rotate_document()
-                elif command == "COPY_ALL":
-                    self._copy_to_clipboard(None, self.image_paths)
-                elif command == "COPY_FILE":
-                    if self.docx_document:
-                        self.docx_document.save(self.current_filename)
-                    self._copy_to_clipboard(None, [os.path.abspath(self.current_filename)])
                 else:
-                    # Default: treat as image save command (img, count, window_title)
-                    self._save_screenshot(*item)
+                    self._perform_save(*task)
                 
-                self.session_queue.task_done()
-            except queue.Empty:
-                pass
-            except Exception:
-                # General safety to keep the worker thread alive
-                pass
+                self.save_queue.task_done()
+            except Exception as e:
+                print(f"Worker Error: {e}")
 
-    def _get_formatted_size(self, path):
-        """Returns a human-readable size string for a file or directory."""
+    def _perform_save(self, image, count, window_title):
         try:
-            total_bytes = 0
-            if os.path.isdir(path):
-                for root, _, files in os.walk(path):
-                    for f in files:
-                        total_bytes += os.path.getsize(os.path.join(root, f))
-            elif os.path.exists(path):
-                total_bytes = os.path.getsize(path)
-            
-            if total_bytes < 1048576: # 1 MB
-                return f"{total_bytes / 1024:.2f} KB"
-            return f"{total_bytes / 1048576:.2f} MB"
-        except Exception:
-            return "0 KB"
-
-    def _save_screenshot(self, image, count, window_title):
-        """Saves the image to the temporary folder and the session destination."""
-        try:
-            # Filename logic
             if self.config['save_mode'] == "folder":
-                filename = f"{self.base_name}_{count}.jpg"
+                filename = f"{self.base_filename}_{count}.jpg"
             else:
                 filename = f"screen_{count}.jpg"
-                
-            temp_path = os.path.join(self.temp_dir, filename)
-            image.save(temp_path, "JPEG", quality=90)
-            self.image_paths.append(temp_path)
-            
+
+            image_path = os.path.join(self.temp_dir, filename)
+            image.save(image_path, "JPEG", quality=90)
+            self.captured_images.append(image_path)
+
             if self.config['save_mode'] == "folder":
-                # Copy from temp to final folder
-                dest_path = os.path.join(self.current_filename, filename)
-                shutil.copyfile(temp_path, dest_path)
+                shutil.copyfile(image_path, os.path.join(self.current_filepath, filename))
+                self.last_size_str = self._get_folder_size(self.current_filepath)
             else:
-                # Insert into Word document
-                if os.path.exists(self.current_filename) and self.max_size_bytes > 0:
-                    # Check if we need to split the file before adding more content
-                    current_sz = os.path.getsize(self.current_filename)
-                    image_sz = os.path.getsize(temp_path)
-                    if (current_sz + image_sz) > self.max_size_bytes:
-                        self._rotate_document()
+                # Check for file rotation
+                if os.path.exists(self.current_filepath) and self.max_size_bytes > 0:
+                    current_size = os.path.getsize(self.current_filepath)
+                    if (current_size + os.path.getsize(image_path)) > self.max_size_bytes:
+                        self._rotate_file()
+
+                if not self.document:
+                    self.document = Document(self.current_filepath)
+
+                # Construct caption
+                caption = ""
+                if window_title and self.config['append_num']:
+                    caption = f"{window_title} {count}"
+                elif window_title:
+                    caption = window_title
+                elif self.config['append_num']:
+                    caption = str(count)
+
+                if caption:
+                    self.document.add_paragraph(caption)
                 
-                if not self.docx_document:
-                    self.docx_document = Document(self.current_filename)
-                
-                # Construct description text
-                text_parts = []
-                if window_title:
-                    text_parts.append(window_title)
-                if self.config['append_num']:
-                    text_parts.append(str(count))
-                
-                annotation = " ".join(text_parts)
-                if annotation:
-                    self.docx_document.add_paragraph(annotation)
-                
-                # Add image and a divider line
-                self.docx_document.add_picture(temp_path, width=Inches(6))
-                self.docx_document.add_paragraph("-" * 50)
-                
-                # Save Word doc with retries (in case user has it open)
-                for _ in range(3):
-                    try:
-                        self.docx_document.save(self.current_filename)
-                        self.warning_shown = False
-                        break
-                    except Exception:
-                        if not self.warning_shown:
-                            msg = f"Please close '{os.path.basename(self.current_filename)}' in Word."
-                            self.message_queue.put(("WARNING", "File Locked", msg))
-                            self.warning_shown = True
-                        time.sleep(0.5)
-            
-            # Update UI stats
-            self.size_string = self._get_formatted_size(self.current_filename)
-            self.message_queue.put(("UPDATE_SESSION", self.current_filename, self.counter, self.size_string))
-        except Exception:
-            pass
+                self.document.add_picture(image_path, width=Inches(6))
+                self.document.add_paragraph("-" * 50)
+
+                try:
+                    self.document.save(self.current_filepath)
+                    self.last_size_str = self._get_file_size(self.current_filepath)
+                    self.warning_shown = False
+                except PermissionError:
+                    if not self.warning_shown:
+                        self.gui_queue.put(("WARNING", "File Locked", "Please close the Word document to continue saving."))
+                        self.warning_shown = True
+                    self.last_size_str = "File Locked"
+
+            self.gui_queue.put(("UPDATE_SESSION", self.current_filepath, self.screenshot_count, self.last_size_str))
+        except Exception as e:
+            print(f"Save Error: {e}")
 
     def _perform_undo(self):
-        """Reverts the last capture from disk and document."""
-        if self.counter <= 0:
+        if self.screenshot_count <= 0:
             return
-            
+        
         try:
-            # Cleanup temporary image cache
-            if self.image_paths:
-                last_path = self.image_paths.pop()
-                if os.path.exists(last_path):
-                    os.remove(last_path)
-            
+            if self.captured_images:
+                path = self.captured_images.pop()
+                if os.path.exists(path):
+                    os.remove(path)
+
             if self.config['save_mode'] == 'folder':
-                # Delete from session folder
-                filename = f"{self.base_name}_{self.counter}.jpg"
-                path_to_remove = os.path.join(self.current_filename, filename)
-                if os.path.exists(path_to_remove):
-                    os.remove(path_to_remove)
-            elif self.docx_document:
-                # Remove the last 3 elements (divider, image, text)
-                for _ in range(3):
-                    if self.docx_document.paragraphs:
-                        p = self.docx_document.paragraphs[-1]
-                        p._element.getparent().remove(p._element)
-                self.docx_document.save(self.current_filename)
+                file_to_remove = os.path.join(self.current_filepath, f"{self.base_filename}_{self.screenshot_count}.jpg")
+                if os.path.exists(file_to_remove):
+                    os.remove(file_to_remove)
+                self.last_size_str = self._get_folder_size(self.current_filepath)
             
-            self.counter -= 1
-            self.size_string = self._get_formatted_size(self.current_filename)
-            self.message_queue.put(("UNDO", self.current_filename, self.counter, self.size_string))
+            elif self.document and len(self.document.paragraphs) >= 2:
+                try:
+                    # Remove last 3 elements (Paragraph, Image, Separator)
+                    removed_count = 0
+                    while removed_count < 3 and self.document.paragraphs:
+                        p = self.document.paragraphs[-1]
+                        p._element.getparent().remove(p._element)
+                        removed_count += 1
+                        # Stop if we hit a non-separator paragraph that has text
+                        if removed_count == 1 and "-" not in p.text and len(p.text) > 0:
+                            break
+                    
+                    self.document.save(self.current_filepath)
+                    self.last_size_str = self._get_file_size(self.current_filepath)
+                except Exception:
+                    pass
+
+            self.screenshot_count -= 1
+            self.gui_queue.put(("UNDO", self.current_filepath, self.screenshot_count, self.last_size_str))
         except Exception:
             pass
 
-    def cleanup(self, delete_session_files=False):
-        """Cleanly terminates threads and wipes temporary data."""
+    def cleanup(self, delete_files=False):
         self.stop()
-        
-        # Wait for threads to exit
-        for thread in [self.worker_thread, self.clipboard_thread]:
-            if thread and thread.is_alive():
-                thread.join(timeout=1.0)
-                
-        # Remove the temporary session folder
-        try:
-            if self.temp_dir and os.path.exists(self.temp_dir):
+        if self.temp_dir and os.path.exists(self.temp_dir):
+            try:
                 shutil.rmtree(self.temp_dir)
-        except Exception:
-            pass
-            
-        # Complete session destruction if requested
-        if delete_session_files and self.current_filename and os.path.exists(self.current_filename):
+            except OSError:
+                pass
+        
+        if delete_files and self.current_filepath and os.path.exists(self.current_filepath):
             try:
                 if self.config['save_mode'] == 'folder':
-                    shutil.rmtree(self.current_filename)
+                    shutil.rmtree(self.current_filepath)
                 else:
-                    os.remove(self.current_filename)
-            except Exception:
+                    os.remove(self.current_filepath)
+            except OSError:
                 pass
 
-    def _rotate_document(self):
-        """Splits the current session into a new Word file (Part 2, 3, etc.)."""
-        try:
-            old_path = self.current_filename
-            self.docx_document = None # Close current handle
-            
-            directory = os.path.dirname(old_path)
-            filename_no_ext = os.path.basename(old_path).rsplit('.', 1)[0]
-            
-            # Regex to detect if we're already in a multi-part series
-            match = re.search(r"^(.*)_Part(\d+)$", filename_no_ext)
-            if match:
-                base = match.group(1)
-                next_index = int(match.group(2)) + 1
-                new_filename = f"{base}_Part{next_index}.docx"
-            else:
-                # Transition from single file to Part 1 / Part 2
-                new_filename = f"{filename_no_ext}_Part2.docx"
-                part1_path = os.path.join(directory, f"{filename_no_ext}_Part1.docx")
-                if os.path.exists(old_path) and not os.path.exists(part1_path):
-                    os.rename(old_path, part1_path)
-            
-            self.current_filename = os.path.join(directory, new_filename)
-            self.docx_document = Document()
-            self.docx_document.save(self.current_filename)
-            self.size_string = "0 KB"
-            
-            # Notify UI about the filename change
-            self.message_queue.put(("UPDATE_FILENAME", old_path, self.current_filename))
-        except Exception:
-            pass
+    def _rotate_file(self):
+        if self.document:
+            try:
+                self.document.save(self.current_filepath)
+            except OSError:
+                pass
+        self.document = None
+
+        directory = os.path.dirname(self.current_filepath)
+        base = os.path.basename(self.current_filepath).rsplit('.', 1)[0]
+
+        match = re.search(r"^(.*)_Part(\d+)$", base)
+
+        if match:
+            root_name = match.group(1)
+            current_num = int(match.group(2))
+            new_name = f"{root_name}_Part{current_num + 1}.docx"
+            self.current_filepath = os.path.join(directory, new_name)
+        else:
+            root_name = base
+            counter = 1
+            while True:
+                part1_name = f"{root_name}_Part{counter}.docx"
+                part1_path = os.path.join(directory, part1_name)
+                if not os.path.exists(part1_path):
+                    break
+                counter += 1
+
+            if os.path.exists(self.current_filepath):
+                try:
+                    os.rename(self.current_filepath, part1_path)
+                except OSError:
+                    pass
+
+            new_name = f"{root_name}_Part{counter + 1}.docx"
+            self.current_filepath = os.path.join(directory, new_name)
+
+        self.document = Document()
+        self.document.save(self.current_filepath)
+        self.last_size_str = "0 KB"
+        self.gui_queue.put(("UPDATE_FILENAME", self.current_filepath))
 
     def _get_active_window_title(self):
-        """Gets the title of the window currently in focus."""
         try:
             hwnd = user32.GetForegroundWindow()
             length = user32.GetWindowTextLengthW(hwnd)
-            buffer = ctypes.create_unicode_buffer(length + 1)
-            user32.GetWindowTextW(hwnd, buffer, length + 1)
-            
-            title = buffer.value
-            # Remove common browser noise
-            title = title.replace(" - Google Chrome", "")
-            title = title.replace(" - Microsoft Edge", "")
-            return title
+            buff = ctypes.create_unicode_buffer(length + 1)
+            user32.GetWindowTextW(hwnd, buff, length + 1)
+            title = buff.value
+            # Clean up common browser suffixes
+            return title.replace(" - Google Chrome", "").replace(" - Microsoft Edge", "")
         except Exception:
             return "Unknown"
 
-    def _process_clipboard_queue(self):
-        """Background loop for auto-copying captured images to the clipboard."""
-        while self.is_running:
-            try:
-                # Use a timeout so we can periodically check self.is_running
-                image_data, temp_path = self.clipboard_queue.get(timeout=0.1)
-                
-                # Save the image to temp path and perform the copy
-                image_data.convert("RGB").save(temp_path, "JPEG")
-                self._copy_to_clipboard(image_data, [temp_path])
-                
-                self.clipboard_queue.task_done()
-            except queue.Empty:
-                pass
-            except Exception:
-                pass
+    def _get_file_size(self, path):
+        if not os.path.exists(path):
+            return "0 KB"
+        size = os.path.getsize(path)
+        return f"{size/1024:.2f} KB" if size < 1048576 else f"{size/1048576:.2f} MB"
 
-    def _copy_to_clipboard(self, image, file_paths):
-        """Low-level Windows clipboard handling for images and files."""
-        copy_img_pref = self.config.get('copy_image', True)
-        copy_files_pref = self.config.get('copy_files', True)
+    def _get_folder_size(self, path):
+        total = sum(os.path.getsize(os.path.join(r, f)) for r, _, fs in os.walk(path) for f in fs)
+        return f"{total/1024:.2f} KB" if total < 1048576 else f"{total/1048576:.2f} MB"
+
+    def _clipboard_worker(self):
+        while True:
+            try:
+                try:
+                    image, path = self.clipboard_queue.get(timeout=0.1)
+                except queue.Empty:
+                    if not self.is_running:
+                        break
+                    continue
+
+                image.convert("RGB").save(path, "JPEG")
+                self.copy_to_clipboard(image, [path])
+                self.clipboard_queue.task_done()
+            except Exception as e:
+                print(f"Clipboard Error: {e}")
+
+    def copy_to_clipboard(self, image, file_paths):
+        copy_img = self.config.get('copy_image', True)
+        copy_files = self.config.get('copy_files', True)
         
-        if not copy_img_pref and not copy_files_pref:
+        if not copy_img and not copy_files:
             return
-            
+
         try:
-            handle_img = None
-            handle_files = None
-            
-            # 1. Prepare Device Independent Bitmap (DIB)
-            if copy_img_pref and image:
-                stream = io.BytesIO()
-                image.convert("RGB").save(stream, "BMP")
-                dib_data = stream.getvalue()[14:]  # Skip BMP header
-                stream.close()
+            h_bitmap = None
+            h_drop = None
+
+            if copy_img and image:
+                output = io.BytesIO()
+                image.convert("RGB").save(output, "BMP")
+                data = output.getvalue()[14:]
+                output.close()
                 
-                handle_img = kernel32.GlobalAlloc(GHND, len(dib_data))
-                if handle_img:
-                    ptr = kernel32.GlobalLock(handle_img)
-                    ctypes.memmove(ptr, dib_data, len(dib_data))
-                    kernel32.GlobalUnlock(handle_img)
-            
-            # 2. Prepare HDROP for file paths
-            if copy_files_pref and file_paths:
-                # Null-separated paths, double-null terminator
-                paths_str = "\0".join([os.path.abspath(p) for p in file_paths]) + "\0\0"
-                paths_bytes = paths_str.encode('utf-16le')
+                h_bitmap = kernel32.GlobalAlloc(0x0042, len(data)) # GMEM_MOVEABLE | GMEM_ZEROINIT
+                if h_bitmap:
+                    ptr = kernel32.GlobalLock(h_bitmap)
+                    ctypes.memmove(ptr, data, len(data))
+                    kernel32.GlobalUnlock(h_bitmap)
+
+            if copy_files and file_paths:
+                files_text = "\0".join([os.path.abspath(p) for p in file_paths]) + "\0\0"
+                files_data = files_text.encode('utf-16le')
                 
-                # 20-byte DROPFILES struct header
-                header = b'\x14\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00'
-                total_size = len(header) + len(paths_bytes)
-                
-                handle_files = kernel32.GlobalAlloc(GHND, total_size)
-                if handle_files:
-                    ptr = kernel32.GlobalLock(handle_files)
-                    ctypes.memmove(ptr, header, len(header))
-                    ctypes.memmove(ptr + 20, paths_bytes, len(paths_bytes))
-                    kernel32.GlobalUnlock(handle_files)
-            
-            # 3. Open and Update Clipboard
-            for _ in range(5):
+                h_drop = kernel32.GlobalAlloc(0x0042, 20 + len(files_data))
+                if h_drop:
+                    ptr = kernel32.GlobalLock(h_drop)
+                    # DROPFILES structure
+                    header = b'\x14\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00'
+                    ctypes.memmove(ptr, header, 20)
+                    ctypes.memmove(ptr + 20, files_data, len(files_data))
+                    kernel32.GlobalUnlock(h_drop)
+
+            # Retry loop for clipboard access
+            success = False
+            for _ in range(10):
                 if user32.OpenClipboard(None):
                     try:
                         user32.EmptyClipboard()
-                        if handle_img:
-                            user32.SetClipboardData(CF_DIB, handle_img)
-                            handle_img = None # Ownership transferred
-                        if handle_files:
-                            user32.SetClipboardData(CF_HDROP, handle_files)
-                            handle_files = None # Ownership transferred
+                        if h_bitmap:
+                            user32.SetClipboardData(8, h_bitmap) # CF_DIB
+                        if h_drop:
+                            user32.SetClipboardData(15, h_drop) # CF_HDROP
+                        success = True
                     finally:
                         user32.CloseClipboard()
                     break
                 time.sleep(0.1)
-            
-            # Cleanup handles if they weren't successfully transferred to the system
-            if handle_img:
-                kernel32.GlobalFree(handle_img)
-            if handle_files:
-                kernel32.GlobalFree(handle_files)
-                
+
+            if not success:
+                if h_bitmap: kernel32.GlobalFree(h_bitmap)
+                if h_drop: kernel32.GlobalFree(h_drop)
+
         except Exception:
             pass
 
     def manual_copy_all(self):
-        """Triggers a background copy of all session images."""
-        self.session_queue.put(("COPY_ALL", None, None))
+        if self.captured_images:
+            self.copy_to_clipboard(None, self.captured_images)
 
     def copy_master_file_to_clipboard(self):
-        """Triggers a background copy of the session file (Folder/Docx)."""
-        self.session_queue.put(("COPY_FILE", None, None))
+        if self.document:
+            try:
+                self.document.save(self.current_filepath)
+            except OSError:
+                pass
+        self.copy_to_clipboard(None, [os.path.abspath(self.current_filepath)])
