@@ -12,6 +12,14 @@ import sys
 import json
 from typing import Dict, Optional
 
+# Add project root to sys.path to allow imports from src
+import sys
+import os
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 from src.utils import get_resource_path, set_dpi_awareness
 from src.hotkeys import HotkeyListener
 from src.engine import ScreenshotSession
@@ -629,7 +637,7 @@ class ModernUI(ctk.CTk):
             self.show_notification("Copied File", "Session File Copied")
 
     def _close_session(self, key, delete_files):
-        self.active_sessions[key].cleanup(delete=delete_files)
+        self.active_sessions[key].cleanup(delete_files=delete_files)
         self.session_tree.delete(key)
         del self.active_sessions[key]
 
