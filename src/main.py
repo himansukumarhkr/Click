@@ -15,8 +15,7 @@ class ToonConfig:
 
     @staticmethod
     def save(fp, d):
-        with open(fp, 'w') as f:
-            [f.write(f"{k}: {v}\n") for k, v in d.items()]
+        with open(fp, 'w') as f: f.writelines(f"{k}: {v}\n" for k, v in d.items())
 class AutoScrollFrame(ctk.CTkFrame):
     def __init__(self, m, bg, **kw):
         super().__init__(m, **kw)
@@ -47,7 +46,8 @@ class ModernUI(ctk.CTk):
         self._cln()
         self.col = {"bg": ("#F3F3F3", "#181818"), "sb": ("#FFFFFF", "#121212"), "cd": ("#FFFFFF", "#2b2b2b"), "tx": ("black", "white"), "tx2": ("gray20", "gray80"), "ib": ("#E0E0E0", "#383838"), "ac": "#2196F3", "ach": "#1976D2", "sc": "#4CAF50", "sch": "#388E3C", "dg": "#F44336", "dgh": "#D32F2F", "bt": ("black", "white"), "bd": ("#D0D0D0", "#555555"), "bdh": ("#B0B0B0", "#666666"), "acd": ("#AED6F1", "#1F3A52"), "scd": ("#A5D6A7", "#1E4222"), "dgd": ("#EF9A9A", "#4A1F1F")}
         self.k_cfg = ToonConfig.load(self.cfg_f)
-        self.geometry(f"{int(self.k_cfg.get('w', 950))}x{int(self.k_cfg.get('h', 700))}")
+        try: self.geometry(f"{int(self.k_cfg.get('w', 950))}x{int(self.k_cfg.get('h', 700))}")
+        except: self.geometry("950x700")
         self.title("Click!"); self.configure(fg_color=self.col["bg"])
         try: ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('himansu.clicktool.screenshot.v1')
         except: pass
@@ -178,10 +178,12 @@ class ModernUI(ctk.CTk):
         ToonConfig.save(self.cfg_f, d)
     def start(self):
         fd, rn = self.e_dr.get().strip(), self.e_nm.get().strip() or "screenshot"
+        if not fd: return messagebox.showwarning("Warning", "Please select a save directory.")
         [b.configure(state='normal' if b != self.b_spl or self.c_md.get() != "Folder" else 'disabled', text_color=self.col["bt"]) for b in [self.b_spl, self.b_ca]]
         cfg = {k: (obj.get() if not isinstance(obj, ctk.CTkEntry) else obj.get().strip()) for obj, k, _ in self._cfg_m()}
         cfg["save_mode"] = "folder" if self.c_md.get() == "Folder" else "docx"
-        s = ScreenshotSession(cfg, self.q)
+        try: s = ScreenshotSession(cfg, self.q)
+        except Exception as e: return messagebox.showerror("Error", f"Failed to start: {e}")
         if self.act: self.pau(self.act)
         k = s.current_filename; self.sess[k], self.act = s, k
         self.tr.insert("", "end", iid=k, text=os.path.basename(k), values=("Active", "0"))

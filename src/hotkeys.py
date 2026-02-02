@@ -15,7 +15,7 @@ class HotkeyListener:
         if not user32.RegisterHotKey(None, 1, 0, vk) and self.cb_err: self.cb_err("Capture (~)")
         if not user32.RegisterHotKey(None, 2, 3, vk) and self.cb_err: self.cb_err("Undo (Ctrl+Alt+~)")
         msg = wintypes.MSG()
-        while self.run and user32.GetMessageW(ctypes.byref(msg), None, 0, 0) != 0:
+        while self.run and user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
             if msg.message == 0x0312:
                 if msg.wParam == 1 and self.cb_cap: self.cb_cap()
                 elif msg.wParam == 2 and self.cb_undo: self.cb_undo()
