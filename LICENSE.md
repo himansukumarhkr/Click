@@ -1,91 +1,128 @@
-SOFTWARE LICENSE AND END‑USER LICENSE AGREEMENT (EULA)
+Software Name: Click!
+Author (Licensor): Himansu Kumar
+Version: v1.0
+Date: 31 January 2026
+Governing Law: Laws of India (subject to mandatory local consumer protection laws)
 
-Software Name: Click!  
-Author (Licensor): Himansu Kumar  
-Version: v1.0  
-Date: 31 January 2026  
-Primary Governing Law: Laws of India (subject to mandatory local consumer protection laws)
+IMPORTANT NOTICE
 
-IMPORTANT: READ THIS AGREEMENT CAREFULLY BEFORE INSTALLING OR USING CLICK!.
+Click! is provided as open-source software.
+By installing, copying, modifying, distributing, or using Click!, you agree to the terms of this License and End-User License Agreement (“Agreement”).
 
-By installing, copying, or using Click!, you agree to be bound by the terms of this End‑User License Agreement (“Agreement”). If you do not agree, do not install or use Click!.
+If you do not agree, do not use the Software.
 
 1. NATURE OF AGREEMENT
 
-1.1 This Agreement is a legally binding contract between you (“End User”) and Himansu Kumar (“Licensor”) for the software product Click!, including any updates, documentation, and related materials (“Software”). 
+1.1 This Agreement is a legally binding contract between you (“You” or “End User”) and Himansu Kumar (“Licensor”) governing your use of the Click! software, including source code, binaries, documentation, and related materials (“Software”).
 
-1.2 This Agreement may be presented electronically (e.g., via installer or download). Your affirmative action (clicking “I Agree”, installing, or using the Software) constitutes acceptance, consistent with electronic contract principles recognised in India and internationally. [web:34][web:37][web:40]
+1.2 This Agreement is intended to operate consistently with recognized open-source licensing principles.
 
-2. GRANT OF LICENSE
+2. OPEN-SOURCE LICENSE GRANT
 
-2.1 The Software is licensed, not sold. Licensor reserves all rights not expressly granted. 
+Subject to the terms of this Agreement, the Licensor hereby grants you a worldwide, royalty-free, non-exclusive license to:
 
-2.2 Licensor grants you a limited, personal, non‑exclusive, non‑transferable, non‑sublicensable, revocable license to install and use the Software free of charge on devices you own or control, solely for personal or internal business purposes. 
+Use the Software for any purpose (personal, educational, or commercial)
 
-2.3 No rights to access or use the source code are granted. The source code is confidential and proprietary to Licensor. [file:16]
+Copy and distribute the Software
 
-3. RESTRICTIONS AND PROHIBITED USES
+Modify the Software and create derivative works
 
-You shall NOT, and shall not permit any third party to:
+Distribute modified versions
 
-3.1 Modify, adapt, translate, alter, or create derivative works based on the Software. 
-3.2 Reverse engineer, decompile, disassemble, or otherwise attempt to derive the source code, except where such restriction is prohibited by mandatory law in your jurisdiction. [web:28][web:45]
-3.3 Remove, obscure, or alter any proprietary notices, trademarks, or labels. 
-3.4 Rent, lease, lend, sell, sublicense, distribute, publish, or otherwise make the Software available to any third party, whether for free or for a fee, without Licensor’s prior written consent. [web:41][web:44]
-3.5 Use the Software to develop a competing or substantially similar product or service. 
-3.6 Circumvent any license control, technical protection measure, or security feature.
+This grant applies to both source code and compiled binaries.
 
-4. INTELLECTUAL PROPERTY AND CONFIDENTIALITY
+3. CONDITIONS OF USE
 
-4.1 The Software embodies valuable intellectual property, including copyrights, trade secrets, and proprietary know‑how. All rights, title, and interest remain exclusively with Licensor. [web:28][web:41]
-4.2 You acquire no ownership rights, only the limited license above. No implied licenses are granted. 
-4.3 Any information learned by you in violation of this Agreement shall be treated as confidential information of Licensor.
+You must:
 
-5. THIRD‑PARTY COMPONENTS
+3.1 Retain all copyright notices, author attributions, and license notices in source and binary distributions.
 
-5.1 The Software may incorporate or depend on third‑party software, libraries, or services (e.g., Python, customtkinter, Pillow/PIL, python‑docx, Windows APIs). Such components are licensed under their own terms, which you must respect. [file:16][web:28][web:45]
-5.2 In case of conflict, third‑party license terms prevail solely for those components.
+3.2 Clearly indicate significant modifications when distributing modified versions.
 
-6. UPDATES, CHANGES, AND TERMINATION
+3.3 Ensure that any redistribution includes this License or a compatible open-source license notice.
 
-6.1 Licensor may provide updates or discontinue the Software at his sole discretion, without notice. 
-6.2 Licensor may change this Agreement for future versions. Continued use constitutes acceptance. 
-6.3 Licensor may terminate your license immediately if you breach any term. On termination, delete all copies.
+4. NO RESTRICTION ON COMPETITION
+
+You are explicitly permitted to:
+
+Study the source code
+
+Learn from it
+
+Fork it
+
+Build competing or alternative software
+
+(This clause exists to ensure compliance with open-source definitions.)
+
+5. THIRD-PARTY COMPONENTS
+
+5.1 The Software includes or depends on third-party libraries (such as Python, CustomTkinter, Pillow, python-docx, and Windows APIs), each governed by its own license.
+
+5.2 You are responsible for complying with all applicable third-party licenses.
+
+5.3 In the event of conflict, third-party licenses apply only to their respective components.
+
+6. CONTRIBUTIONS
+
+6.1 Any contribution you voluntarily submit (code, documentation, fixes) may be incorporated into the Software.
+
+6.2 Unless otherwise stated, you grant the Licensor and the public a perpetual, royalty-free license to use, modify, and distribute your contributions under the same license.
 
 7. NO WARRANTY (DISCLAIMER)
 
-7.1 TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE SOFTWARE IS PROVIDED “AS IS” AND “AS AVAILABLE”, WITH ALL FAULTS, WITHOUT ANY WARRANTIES OF ANY KIND, WHETHER EXPRESS, IMPLIED, OR STATUTORY, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON‑INFRINGEMENT, OR SATISFACTORY QUALITY. [web:23][web:26][web:45]
-7.2 LICENSOR DOES NOT WARRANT THAT THE SOFTWARE WILL BE ERROR‑FREE, UNINTERRUPTED, SECURE, OR THAT DEFECTS WILL BE CORRECTED. YOU USE IT AT YOUR OWN RISK. 
-7.3 SOME JURISDICTIONS DO NOT ALLOW EXCLUSION OF CERTAIN WARRANTIES. TO THAT EXTENT, SUCH EXCLUSIONS MAY NOT APPLY TO YOU. [web:39]
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW:
+
+THE SOFTWARE IS PROVIDED “AS IS” AND “AS AVAILABLE”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, OR ACCURACY.
+
+THE LICENSOR DOES NOT WARRANT THAT THE SOFTWARE WILL BE ERROR-FREE, SECURE, OR UNINTERRUPTED.
+
+YOU USE THE SOFTWARE AT YOUR OWN RISK.
+
+Some jurisdictions do not allow the exclusion of certain warranties. In such cases, those exclusions may not apply to you.
 
 8. LIMITATION OF LIABILITY
 
-8.1 TO THE FULLEST EXTENT PERMITTED BY LAW, LICENSOR SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, CONSEQUENTIAL, SPECIAL, EXEMPLARY, OR PUNITIVE DAMAGES, OR ANY LOSS OF PROFITS, REVENUE, DATA, OR BUSINESS, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES. [web:23][web:39][web:45]
-8.2 LICENSOR’S TOTAL LIABILITY FOR ALL CLAIMS SHALL BE LIMITED TO THE AMOUNT YOU PAID FOR THE SOFTWARE (INTENDED TO BE ZERO). [web:23][web:29]
-8.3 NOTHING EXCLUDES LIABILITY THAT CANNOT BE EXCLUDED UNDER MANDATORY LAW, INCLUDING FRAUD, WILFUL MISCONDUCT, OR CERTAIN CONSUMER RIGHTS. [web:23][web:39]
+TO THE FULLEST EXTENT PERMITTED BY LAW:
 
-9. INDEMNITY
+THE LICENSOR SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, CONSEQUENTIAL, SPECIAL, EXEMPLARY, OR PUNITIVE DAMAGES,
 
-You agree to indemnify and hold harmless Licensor from all claims, damages, losses, liabilities, costs, and expenses (including legal fees) arising out of or related to your use or misuse of the Software, breach of this Agreement, or violation of any law or third‑party rights. [web:25][web:29]
+INCLUDING LOSS OF DATA, PROFITS, BUSINESS INTERRUPTION, OR SYSTEM FAILURE,
 
-10. DATA AND PRIVACY
+EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
 
-10.1 The Software processes data (e.g., files, clipboard, screenshots) locally on your device. [file:16]
-10.2 You are solely responsible for complying with data protection and privacy laws applicable to your use. 
+THE LICENSOR’S TOTAL LIABILITY SHALL NOT EXCEED THE AMOUNT YOU PAID FOR THE SOFTWARE (IF ANY).
 
-11. TERM AND TERMINATION BY USER
+Nothing in this Agreement excludes liability that cannot be excluded under applicable law, including fraud or wilful misconduct.
 
-11.1 You may terminate by deleting all copies and ceasing use. 
-11.2 Sections 2–5, 7–10, and 12–13 survive termination.
+9. DATA AND PRIVACY
 
-12. GOVERNING LAW AND JURISDICTION
+9.1 Click! processes data (such as screenshots and clipboard contents) locally on your device.
 
-12.1 Subject to mandatory local consumer protection laws, this Agreement is governed by the laws of India. [web:28][web:39][web:42]
-12.2 Where permitted by law, disputes shall be subject to the exclusive jurisdiction of courts at Mumbai, Maharashtra, India. For certain consumers, mandatory local rules may apply. [web:39][web:42]
+9.2 The Software does not transmit data externally by default.
 
-13. SEVERABILITY AND ENTIRE AGREEMENT
+9.3 You are solely responsible for ensuring your use complies with applicable data protection and privacy laws.
 
-13.1 If any provision is invalid, the rest remains in effect. [web:21][web:39]
-13.2 This is the entire agreement and supersedes all prior understandings.
+10. TERMINATION
 
-BY INSTALLING, COPYING, OR USING CLICK!, YOU CONFIRM YOU HAVE READ THIS AGREEMENT AND AGREE TO BE LEGALLY BOUND BY ITS TERMS. IF YOU DO NOT AGREE, DO NOT INSTALL OR USE CLICK!.
+10.1 This Agreement remains effective until terminated.
+
+10.2 You may terminate it at any time by ceasing use and deleting copies.
+
+10.3 Sections relating to warranty disclaimers, liability limitations, and governing law survive termination.
+
+11. GOVERNING LAW AND JURISDICTION
+
+11.1 This Agreement shall be governed by the laws of India, subject to mandatory consumer protection laws.
+
+11.2 Courts at Mumbai, Maharashtra, India shall have jurisdiction, unless mandatory local laws provide otherwise.
+
+12. SEVERABILITY AND ENTIRE AGREEMENT
+
+12.1 If any provision is held invalid, the remaining provisions remain enforceable.
+
+12.2 This Agreement constitutes the entire agreement between the parties regarding the Software.
+
+ACCEPTANCE
+
+BY USING, MODIFYING, OR DISTRIBUTING CLICK!, YOU CONFIRM THAT YOU HAVE READ, UNDERSTOOD, AND AGREED TO THIS LICENSE.
