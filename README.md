@@ -47,9 +47,10 @@ Undo	Ctrl + Alt + ~	Delete last capture from disk
 
 📥 Getting Started (Under 1 Minute)
 1️⃣ Clone or download the repository
-2️⃣ Run Click!.exe OR start from source
-3️⃣ Choose output folder (default provided)
-4️⃣ Press ~ anywhere to capture
+2️⃣ Run build.py
+3️⃣ Run Click!.exe OR start from source
+4️⃣ Choose output folder (default provided)
+5️⃣ Press ~ to Capture screenshots.
 
 Filename Format
 
