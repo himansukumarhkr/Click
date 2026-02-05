@@ -15,6 +15,7 @@ from typing import Dict, Optional
 # Add project root to sys.path to allow imports from src
 import sys
 import os
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(current_dir)
 if project_root not in sys.path:
@@ -24,8 +25,10 @@ from src.utils import get_resource_path, set_dpi_awareness
 from src.hotkeys import HotkeyListener
 from src.engine import ScreenshotSession
 
+
 class ToonConfig:
     """Handles loading and saving configuration to a JSON-like file."""
+
     @staticmethod
     def load(filepath: str) -> Dict:
         config = {}
@@ -58,8 +61,10 @@ class ToonConfig:
         except Exception:
             pass
 
+
 class AutoScrollFrame(ctk.CTkFrame):
     """A scrollable frame component using CustomTkinter."""
+
     def __init__(self, master, bg_color_hex, **kwargs):
         super().__init__(master, **kwargs)
         self.grid_rowconfigure(0, weight=1)
@@ -94,12 +99,12 @@ class AutoScrollFrame(ctk.CTkFrame):
         bbox = self.canvas.bbox("all")
         if not bbox:
             return
-        
+
         if (bbox[3] - bbox[1]) > self.canvas.winfo_height():
             self.vsb.grid(row=0, column=1, sticky="ns")
         else:
             self.vsb.grid_forget()
-            
+
         if (bbox[2] - bbox[0]) > self.canvas.winfo_width():
             self.hsb.grid(row=1, column=0, sticky="ew")
         else:
@@ -118,11 +123,14 @@ class AutoScrollFrame(ctk.CTkFrame):
         self.scrollable_frame.configure(fg_color=color)
         self.canvas.update_idletasks()
 
+
 # Enable High-DPI support
 set_dpi_awareness()
 
+
 class ModernUI(ctk.CTk):
     """Main Application Window"""
+
     def __init__(self):
         super().__init__()
         ctk.set_appearance_mode("Dark")
@@ -157,7 +165,7 @@ class ModernUI(ctk.CTk):
         }
 
         self.app_config = ToonConfig.load(self.config_file)
-        
+
         # Window Setup
         width = int(self.app_config.get("w", 950))
         height = int(self.app_config.get("h", 700))
@@ -190,7 +198,7 @@ class ModernUI(ctk.CTk):
                                        text_color=self.colors["text"])
         self.logo_label.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="w")
 
-        self.theme_switch = ctk.CTkSwitch(self.sidebar_frame, text="Dark Mode", command=self.toggle_theme, 
+        self.theme_switch = ctk.CTkSwitch(self.sidebar_frame, text="Dark Mode", command=self.toggle_theme,
                                           onvalue="Dark", offvalue="Light", text_color=self.colors["text"])
         self.theme_switch.grid(row=1, column=0, padx=20, pady=10, sticky="w")
         self.theme_switch.select()
@@ -205,7 +213,8 @@ class ModernUI(ctk.CTk):
         self.tree_style.theme_use("clam")
         self.update_tree_style("Dark")
 
-        self.session_tree = ttk.Treeview(self.tree_container, columns=("status", "count"), show="tree", selectmode="browse")
+        self.session_tree = ttk.Treeview(self.tree_container, columns=("status", "count"), show="tree",
+                                         selectmode="browse")
         self.session_tree.column("#0", width=120)
         self.session_tree.column("status", width=60, anchor="center")
         self.session_tree.column("count", width=40, anchor="center")
@@ -234,7 +243,8 @@ class ModernUI(ctk.CTk):
                                          text_color=self.colors["btn_text"], state="disabled", height=32)
         self.btn_discard.pack(fill="x", pady=5)
 
-        self.btn_copy_file = ctk.CTkButton(self.action_buttons_frame, text="COPY SESSION FILE", command=self.copy_session_file,
+        self.btn_copy_file = ctk.CTkButton(self.action_buttons_frame, text="COPY SESSION FILE",
+                                           command=self.copy_session_file,
                                            fg_color=self.colors["btn_default"],
                                            hover_color=self.colors["btn_default_hover"],
                                            text_color=self.colors["btn_text"], state="disabled", height=32)
@@ -251,29 +261,46 @@ class ModernUI(ctk.CTk):
         self.config_card.grid(row=1, column=0, sticky="ew", pady=(0, 15))
         self.config_card.grid_columnconfigure(1, weight=1)
 
-        ctk.CTkLabel(self.config_card, text="Name", text_color=self.colors["text_secondary"]).grid(row=0, column=0, padx=20, pady=15, sticky="w")
+        ctk.CTkLabel(self.config_card, text="Name", text_color=self.colors["text_secondary"]).grid(row=0, column=0,
+                                                                                                   padx=20, pady=15,
+                                                                                                   sticky="w")
         self.entry_name = ctk.CTkEntry(self.config_card, placeholder_text="screenshot", border_width=0,
                                        fg_color=self.colors["input_bg"], text_color=self.colors["text"])
         self.entry_name.grid(row=0, column=1, padx=(0, 20), pady=15, sticky="ew")
 
-        ctk.CTkLabel(self.config_card, text="Path", text_color=self.colors["text_secondary"]).grid(row=1, column=0, padx=20, pady=(0, 15), sticky="w")
+        ctk.CTkLabel(self.config_card, text="Path", text_color=self.colors["text_secondary"]).grid(row=1, column=0,
+                                                                                                   padx=20,
+                                                                                                   pady=(0, 15),
+                                                                                                   sticky="w")
         path_frame = ctk.CTkFrame(self.config_card, fg_color="transparent")
         path_frame.grid(row=1, column=1, padx=(0, 20), pady=(0, 15), sticky="ew")
-        
+
         self.entry_path = ctk.CTkEntry(path_frame, border_width=0, fg_color=self.colors["input_bg"],
                                        text_color=self.colors["text"])
         self.entry_path.pack(side="left", fill="x", expand=True, padx=(0, 10))
-        
-        ctk.CTkButton(path_frame, text="...", width=40, fg_color="#444", hover_color="#555", 
+
+        self.btn_open_folder = ctk.CTkButton(path_frame, text="Open", width=40, fg_color="#444", hover_color="#555",
+                                             command=self.open_current_folder, text_color="white")
+        self.btn_open_folder.pack(side="right", padx=(5, 0))
+
+        ctk.CTkButton(path_frame, text="...", width=40, fg_color="#444", hover_color="#555",
                       command=self.browse_folder, text_color="white").pack(side="right")
 
-        ctk.CTkLabel(self.config_card, text="Mode", text_color=self.colors["text_secondary"]).grid(row=2, column=0, padx=20, pady=(0, 15), sticky="w")
+        ctk.CTkLabel(self.config_card, text="Mode", text_color=self.colors["text_secondary"]).grid(row=2, column=0,
+                                                                                                   padx=20,
+                                                                                                   pady=(0, 15),
+                                                                                                   sticky="w")
         self.combo_mode = ctk.CTkComboBox(self.config_card, values=["Word Document", "Folder"], border_width=0,
                                           button_color="#444", text_color=self.colors["text"],
                                           fg_color=self.colors["input_bg"])
         self.combo_mode.grid(row=2, column=1, padx=(0, 20), pady=(0, 15), sticky="ew")
 
-        ctk.CTkLabel(self.config_card, text="Max Size (MB)", text_color=self.colors["text_secondary"]).grid(row=3, column=0, padx=20, pady=(0, 15), sticky="w")
+        ctk.CTkLabel(self.config_card, text="Max Size (MB)", text_color=self.colors["text_secondary"]).grid(row=3,
+                                                                                                            column=0,
+                                                                                                            padx=20,
+                                                                                                            pady=(0,
+                                                                                                                  15),
+                                                                                                            sticky="w")
         self.entry_size = ctk.CTkEntry(self.config_card, placeholder_text="0 = Unlimited", border_width=0,
                                        fg_color=self.colors["input_bg"], text_color=self.colors["text"])
         self.entry_size.grid(row=3, column=1, padx=(0, 20), pady=(0, 15), sticky="ew")
@@ -293,12 +320,15 @@ class ModernUI(ctk.CTk):
         ctk.CTkCheckBox(self.options_card, text="Append Number", variable=self.var_append_num,
                         text_color=self.colors["text"]).grid(row=0, column=1, padx=20, pady=15, sticky="w")
         ctk.CTkCheckBox(self.options_card, text="Save by Date", variable=self.var_save_date,
-                        command=self.update_path_preview, text_color=self.colors["text"]).grid(row=0, column=2, padx=20, pady=15, sticky="w")
+                        command=self.update_path_preview, text_color=self.colors["text"]).grid(row=0, column=2, padx=20,
+                                                                                               pady=15, sticky="w")
 
-        ctk.CTkCheckBox(self.options_card, text="Auto-Copy", variable=self.var_auto_copy, command=self.validate_auto_copy,
+        ctk.CTkCheckBox(self.options_card, text="Auto-Copy", variable=self.var_auto_copy,
+                        command=self.validate_auto_copy,
                         text_color=self.colors["text"]).grid(row=1, column=0, padx=20, pady=(0, 15), sticky="w")
 
-        ctk.CTkFrame(self.options_card, height=2, fg_color="gray").grid(row=2, column=0, columnspan=3, sticky="ew", padx=10)
+        ctk.CTkFrame(self.options_card, height=2, fg_color="gray").grid(row=2, column=0, columnspan=3, sticky="ew",
+                                                                        padx=10)
 
         ctk.CTkLabel(self.options_card, text="Clipboard Options:", text_color=self.colors["text_secondary"],
                      font=ctk.CTkFont(size=11)).grid(row=3, column=0, padx=20, pady=10, sticky="w")
@@ -306,8 +336,11 @@ class ModernUI(ctk.CTk):
         self.var_copy_files = ctk.BooleanVar(value=True)
         self.var_copy_img = ctk.BooleanVar(value=True)
         ctk.CTkCheckBox(self.options_card, text="Files (Explorer)", variable=self.var_copy_files,
-                        command=self.validate_clipboard_options, text_color=self.colors["text"]).grid(row=3, column=1, padx=20, pady=10, sticky="w")
-        ctk.CTkCheckBox(self.options_card, text="Image (Bitmap)", variable=self.var_copy_img, command=self.validate_clipboard_options,
+                        command=self.validate_clipboard_options, text_color=self.colors["text"]).grid(row=3, column=1,
+                                                                                                      padx=20, pady=10,
+                                                                                                      sticky="w")
+        ctk.CTkCheckBox(self.options_card, text="Image (Bitmap)", variable=self.var_copy_img,
+                        command=self.validate_clipboard_options,
                         text_color=self.colors["text"]).grid(row=3, column=2, padx=20, pady=10, sticky="w")
 
         # Action Buttons
@@ -323,13 +356,15 @@ class ModernUI(ctk.CTk):
                                        text_color=self.colors["btn_text"], state="disabled")
         self.btn_split.grid(row=5, column=0, sticky="w", padx=20, pady=(10, 0))
 
-        self.btn_copy_all = ctk.CTkButton(content_parent, text="COPY ALL", height=30, width=120, command=self.copy_all_images,
+        self.btn_copy_all = ctk.CTkButton(content_parent, text="COPY ALL", height=30, width=120,
+                                          command=self.copy_all_images,
                                           fg_color=self.colors["btn_default"],
                                           hover_color=self.colors["btn_default_hover"],
                                           text_color=self.colors["btn_text"], state="disabled")
         self.btn_copy_all.grid(row=5, column=0, sticky="e", padx=20, pady=(10, 0))
 
-        self.status_label = ctk.CTkLabel(content_parent, text="Ready to capture", text_color=self.colors["text_secondary"])
+        self.status_label = ctk.CTkLabel(content_parent, text="Ready to capture",
+                                         text_color=self.colors["text_secondary"])
         self.status_label.grid(row=6, column=0, pady=(20, 0))
         ctk.CTkLabel(content_parent, text="~ (Capture)    |    Ctrl+Alt+~ (Undo)",
                      text_color=self.colors["text_secondary"],
@@ -340,11 +375,11 @@ class ModernUI(ctk.CTk):
         self.notification_window.withdraw()
         self.notification_window.overrideredirect(True)
         self.notification_window.attributes("-topmost", True)
-        
+
         self.notif_frame = ctk.CTkFrame(self.notification_window, fg_color=self.colors["bg_sidebar"], corner_radius=10,
                                         border_width=1, border_color="gray")
         self.notif_frame.pack(fill="both", expand=True)
-        
+
         self.notif_label = ctk.CTkLabel(self.notif_frame, text="", font=ctk.CTkFont(size=13, weight="bold"),
                                         text_color=self.colors["text"])
         self.notif_label.pack(expand=True, padx=20, pady=10)
@@ -357,7 +392,7 @@ class ModernUI(ctk.CTk):
 
         self.hotkey_manager = HotkeyListener(self.on_hotkey_capture, self.on_hotkey_undo, self.on_hotkey_error)
         self.hotkey_manager.start()
-        
+
         self.check_message_queue()
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
@@ -370,7 +405,7 @@ class ModernUI(ctk.CTk):
             pass
 
         if not getattr(sys, 'frozen', False):
-             self.show_dev_splash()
+            self.show_dev_splash()
 
     def show_dev_splash(self):
         splash_path = get_resource_path("assets/splash.png")
@@ -382,7 +417,7 @@ class ModernUI(ctk.CTk):
 
                 from PIL import Image
                 pil_image = Image.open(splash_path)
-                
+
                 width, height = pil_image.size
                 screen_width = self.winfo_screenwidth()
                 screen_height = self.winfo_screenheight()
@@ -406,7 +441,7 @@ class ModernUI(ctk.CTk):
             except Exception:
                 self.deiconify()
         else:
-             self.deiconify()
+            self.deiconify()
 
     def _apply_window_icon(self):
         if os.path.exists(self.icon_path):
@@ -453,9 +488,11 @@ class ModernUI(ctk.CTk):
             field = "#FFFFFF"
             sel = "#2196F3"
             head_bg = "#E0E0E0"
-        
-        self.tree_style.configure("Treeview", background=bg, foreground=fg, fieldbackground=field, borderwidth=0, rowheight=28)
-        self.tree_style.configure("Treeview.Heading", background=head_bg, foreground=fg, relief="flat", font=('Segoe UI', 9, 'bold'))
+
+        self.tree_style.configure("Treeview", background=bg, foreground=fg, fieldbackground=field, borderwidth=0,
+                                  rowheight=28)
+        self.tree_style.configure("Treeview.Heading", background=head_bg, foreground=fg, relief="flat",
+                                  font=('Segoe UI', 9, 'bold'))
         self.tree_style.map("Treeview", background=[('selected', sel)], foreground=[('selected', 'white')])
 
     def validate_auto_copy(self, *args):
@@ -476,15 +513,15 @@ class ModernUI(ctk.CTk):
     def show_notification(self, title, message):
         self.notif_label.configure(text=f"{title}\n{message}", text_color=self.colors['success'])
         self.notification_window.update_idletasks()
-        
+
         width = 180
         height = 60
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
-        
+
         self.notification_window.geometry(f"{width}x{height}+{screen_width - width - 20}+{screen_height - height - 60}")
         self.notification_window.deiconify()
-        
+
         if self.notification_timer:
             self.after_cancel(self.notification_timer)
         self.notification_timer = self.after(1500, self.notification_window.withdraw)
@@ -500,13 +537,13 @@ class ModernUI(ctk.CTk):
     def load_defaults(self):
         config = self.app_config
         default_dir = os.path.join(os.path.expanduser("~"), "Desktop", "Evidence")
-        
+
         self.entry_path.insert(0, config.get('save_dir', default_dir))
-        
+
         filename = config.get('filename', 'screenshot')
         self.entry_name.delete(0, "end")
         self.entry_name.insert(0, filename)
-        
+
         if config.get('max_size'):
             self.entry_size.delete(0, "end")
             self.entry_size.insert(0, config.get('max_size'))
@@ -517,7 +554,7 @@ class ModernUI(ctk.CTk):
         self.var_auto_copy.set(config.get("auto_copy", False))
         self.var_copy_files.set(config.get("copy_files", True))
         self.var_copy_img.set(config.get("copy_image", True))
-        
+
         mode = "Folder" if config.get("save_mode", "docx") == "folder" else "Word Document"
         self.combo_mode.set(mode)
 
@@ -525,7 +562,7 @@ class ModernUI(ctk.CTk):
         path = self.entry_path.get()
         if self.backup_path:
             path = self.backup_path
-            
+
         data = {
             "filename": self.entry_name.get(),
             "save_dir": path,
@@ -545,7 +582,7 @@ class ModernUI(ctk.CTk):
     def start_new_session(self, dry_run=False):
         base_dir = self.entry_path.get().strip()
         raw_name = self.entry_name.get().strip() or "screenshot"
-        
+
         date_str = datetime.datetime.now().strftime("%d-%m-%Y")
         final_dir = base_dir
         self.backup_path = None
@@ -589,7 +626,7 @@ class ModernUI(ctk.CTk):
         }
 
         session = ScreenshotSession(config, self.gui_queue)
-        
+
         if self.current_session_key:
             self.pause_session(self.current_session_key)
 
@@ -610,11 +647,11 @@ class ModernUI(ctk.CTk):
         selection = self.session_tree.selection()
         if not selection:
             return
-        
+
         key = selection[0]
         if self.current_session_key and self.current_session_key != key:
             self.pause_session(self.current_session_key)
-            
+
         self.current_session_key = key
         self.active_sessions[key].status = "Active"
         self.session_tree.set(key, "status", "Active")
@@ -633,8 +670,27 @@ class ModernUI(ctk.CTk):
     def copy_session_file(self):
         selection = self.session_tree.selection()
         if selection and selection[0] in self.active_sessions:
-            threading.Thread(target=self.active_sessions[selection[0]].copy_master_file_to_clipboard, daemon=True).start()
+            threading.Thread(target=self.active_sessions[selection[0]].copy_master_file_to_clipboard,
+                             daemon=True).start()
             self.show_notification("Copied File", "Session File Copied")
+
+    def open_current_folder(self):
+        path = self.entry_path.get()
+        if not path:
+            return
+
+        if os.path.exists(path):
+            if os.path.isfile(path):
+                os.startfile(os.path.dirname(path))
+            else:
+                os.startfile(path)
+        else:
+            # Path doesn't exist, try parent directory
+            parent = os.path.dirname(path)
+            if os.path.exists(parent):
+                os.startfile(parent)
+            else:
+                messagebox.showerror("Error", "Folder does not exist")
 
     def _close_session(self, key, delete_files):
         self.active_sessions[key].cleanup(delete_files=delete_files)
@@ -657,7 +713,8 @@ class ModernUI(ctk.CTk):
     def on_session_select(self, event):
         selection = self.session_tree.selection()
         if not selection:
-            for btn in [self.btn_resume, self.btn_save, self.btn_discard, self.btn_split, self.btn_copy_all, self.btn_copy_file]:
+            for btn in [self.btn_resume, self.btn_save, self.btn_discard, self.btn_split, self.btn_copy_all,
+                        self.btn_copy_file]:
                 btn.configure(state="disabled")
             self.btn_resume.configure(fg_color=self.colors["accent_disabled"])
             self.btn_save.configure(fg_color=self.colors["success_disabled"])
@@ -672,7 +729,8 @@ class ModernUI(ctk.CTk):
         self.btn_copy_file.configure(state="normal")
 
         if status == "Paused":
-            self.btn_resume.configure(state="normal", fg_color=self.colors["accent"], text_color=self.colors["btn_text"])
+            self.btn_resume.configure(state="normal", fg_color=self.colors["accent"],
+                                      text_color=self.colors["btn_text"])
         else:
             self.btn_resume.configure(state="disabled", fg_color=self.colors["accent_disabled"])
 
@@ -700,41 +758,76 @@ class ModernUI(ctk.CTk):
     def copy_all_images(self):
         if self.current_session_key and self.active_sessions[self.current_session_key].captured_images:
             threading.Thread(target=self.active_sessions[self.current_session_key].manual_copy_all, daemon=True).start()
-            self.show_notification("Copied All", f"{len(self.active_sessions[self.current_session_key].captured_images)} Images")
+            self.show_notification("Copied All",
+                                   f"{len(self.active_sessions[self.current_session_key].captured_images)} Images")
 
     def check_message_queue(self):
         try:
             while True:
                 msg = self.gui_queue.get_nowait()
                 action = msg[0]
-                
+
                 if action == "NOTIFY":
                     if msg[1] in self.active_sessions:
                         self.session_tree.set(msg[1], "count", msg[2])
                         if msg[1] == self.current_session_key:
-                            self.status_label.configure(text=f"Captured #{msg[2]} ({msg[3]})", text_color=self.colors["success"])
+                            self.status_label.configure(text=f"Captured #{msg[2]} ({msg[3]})",
+                                                        text_color=self.colors["success"])
                             self.show_notification(f"Screenshot #{msg[2]}", msg[3])
-                            
+
                 elif action == "UPDATE_SESSION":
                     if msg[1] in self.active_sessions:
                         self.session_tree.set(msg[1], "count", msg[2])
                         if msg[1] == self.current_session_key:
-                            self.status_label.configure(text=f"Saved #{msg[2]} ({msg[3]})", text_color=self.colors["success"])
+                            self.status_label.configure(text=f"Saved #{msg[2]} ({msg[3]})",
+                                                        text_color=self.colors["success"])
                             self.show_notification(f"Screenshot #{msg[2]}", msg[3])
-                            
+
                 elif action == "UNDO":
                     if msg[1] in self.active_sessions:
                         self.session_tree.set(msg[1], "count", msg[2])
                         if msg[1] == self.current_session_key:
                             self.status_label.configure(text=f"Undone (#{msg[2]})", text_color="orange")
                             self.show_notification(f"Undone #{msg[2]}", msg[3])
-                            
+
                 elif action == "WARNING":
                     messagebox.showwarning(msg[1], msg[2])
-                    
+
                 elif action == "HOTKEY_FAIL":
-                    messagebox.showerror("Hotkey Error", f"Could not register: {msg[1]}\nClose other apps using this key.")
-                    
+                    messagebox.showerror("Hotkey Error",
+                                         f"Could not register: {msg[1]}\nClose other apps using this key.")
+
+                elif action == "COPY_PROGRESS":
+                    # msg[1] = current, msg[2] = total
+                    self.status_label.configure(text=f"Copying to Clipboard... ({msg[1]}/{msg[2]})",
+                                                text_color="orange")
+                    if msg[1] == msg[2]:
+                        self.show_notification("Copy Complete", f"Copied {msg[2]} items to clipboard")
+                        self.update_status_label()  # Restore default status
+
+                elif action == "UPDATE_FILENAME":
+                    # msg[1] = session_id, msg[2] = new_filepath
+                    session_key = msg[1]
+                    new_path = msg[2]
+                    if session_key in self.active_sessions:
+                        base = os.path.basename(new_path)
+                        match = re.search(r"_Part(\d+)\.docx$", base)
+                        if match:
+                            part_num = match.group(1)
+                            # Update tree item text
+                            orig_name = os.path.basename(session_key)
+                            # Remove extension from original name if present for display
+                            if orig_name.lower().endswith('.docx'):
+                                orig_name = orig_name[:-5]
+
+                            display_name = f"{orig_name} (Part {part_num})"
+                            self.session_tree.item(session_key, text=display_name)
+
+                            # Update status label if this is the current session
+                            if session_key == self.current_session_key:
+                                self.status_label.configure(text=f"Switched to Part {part_num}",
+                                                            text_color=self.colors["accent"])
+
         except queue.Empty:
             pass
         self.after(50, self.check_message_queue)
@@ -743,15 +836,16 @@ class ModernUI(ctk.CTk):
         if self.active_sessions:
             if not messagebox.askokcancel("Quit", "Open sessions will be saved. Quit?"):
                 return
-        
+
         self.save_current_config()
         if self.hotkey_manager:
             self.hotkey_manager.stop()
-            
+
         for session in self.active_sessions.values():
             session.cleanup()
-            
+
         self.destroy()
+
 
 if __name__ == "__main__":
     app = ModernUI()
