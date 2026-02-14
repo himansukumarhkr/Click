@@ -11,11 +11,11 @@ import re
 import sys
 import json
 from typing import Dict, Optional
-import ctypes
+from docx import Document
 
-# Add project root to sys.path to allow imports from src
 import sys
 import os
+import ctypes
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(current_dir)
@@ -274,6 +274,10 @@ class ModernUI(ctk.CTk):
                                                                                                    pady=(0, 15),
                                                                                                    sticky="w")
         path_frame = ctk.CTkFrame(self.config_card, fg_color="transparent")
+        self.btn_select_file = ctk.CTkButton(path_frame, text="Select File", width=80, fg_color="#444",
+                                             hover_color="#555", command=self.select_existing_word_file,
+                                             text_color="white")
+        self.btn_select_file.pack(side="right", padx=(5, 0))
         path_frame.grid(row=1, column=1, padx=(0, 20), pady=(0, 15), sticky="ew")
 
         self.entry_path = ctk.CTkEntry(path_frame, border_width=0, fg_color=self.colors["input_bg"],
@@ -535,6 +539,47 @@ class ModernUI(ctk.CTk):
             if self.var_save_date.get():
                 self.update_path_preview()
 
+    def select_existing_word_file(self):
+        file_path = filedialog.askopenfilename(title="Select Word Document to Append",
+                                               filetypes=[("Word documents", "*.docx")])
+        if file_path:
+            from docx import Document
+            size_bytes = os.path.getsize(file_path)
+            size_str = f"{size_bytes / 1024:.2f} KB" if size_bytes < 1048576 else f"{size_bytes / 1048576:.2f} MB"
+            doc = Document(file_path)
+            img_count = len(doc.inline_shapes)
+
+            # If a session for this file already exists, just activate it
+            if file_path in self.active_sessions:
+                self.current_session_key = file_path
+                if not self.session_tree.exists(file_path):
+                    self.session_tree.insert("", "end", iid=file_path, text=os.path.basename(file_path),
+                                             values=("Active", img_count))
+                else:
+                    self.session_tree.item(file_path, values=("Active", img_count))
+                self.session_tree.selection_set(file_path)
+                self.update_status_label()
+                self.status_label.configure(text=f"Resumed: {img_count} images ({size_str})",
+                                            text_color=self.colors["accent"])
+                return
+
+            self.entry_path.delete(0, "end")
+            self.entry_path.insert(0, os.path.dirname(file_path))
+            name_only = os.path.basename(file_path).replace(".docx", "")
+            self.entry_name.delete(0, "end")
+            self.entry_name.insert(0, name_only)
+            self.combo_mode.set("Word Document")
+
+            self.status_label.configure(text=f"Ready to Resume: {img_count} images ({size_str})",
+                                        text_color=self.colors["accent"])
+
+            # This is the critical hand-off data
+            self.app_config["target_file"] = file_path
+            self.app_config["start_count"] = img_count
+
+            # Automatically start the session for the selected file
+            self.start_new_session()
+
     def load_defaults(self):
         config = self.app_config
         default_dir = os.path.join(os.path.expanduser("~"), "Desktop", "Evidence")
@@ -614,10 +659,16 @@ class ModernUI(ctk.CTk):
         self.btn_split.configure(state='disabled' if is_folder_mode else 'normal', text_color=self.colors["btn_text"])
         self.btn_copy_all.configure(state='normal', text_color=self.colors["btn_text"])
 
+        # Create config and pull resume data if it exists
+        target = self.app_config.get("target_file")
+        count = self.app_config.get("start_count", 0)
+
         config = {
             "filename": raw_name,
             "save_dir": final_dir,
             "save_mode": "folder" if is_folder_mode else "docx",
+            "target_file": target,
+            "start_count": count,
             "log_title": self.var_log_title.get(),
             "append_num": self.var_append_num.get(),
             "auto_copy": self.var_auto_copy.get(),
@@ -628,6 +679,10 @@ class ModernUI(ctk.CTk):
 
         session = ScreenshotSession(config, self.gui_queue)
 
+        # Clear the temporary resume data so it doesn't affect future sessions
+        self.app_config["target_file"] = None
+        self.app_config["start_count"] = 0
+
         if self.current_session_key:
             self.pause_session(self.current_session_key)
 
@@ -635,7 +690,12 @@ class ModernUI(ctk.CTk):
         self.active_sessions[key] = session
         self.current_session_key = key
 
-        self.session_tree.insert("", "end", iid=key, text=os.path.basename(key), values=("Active", "0"))
+        # Update Treeview with the actual resume count
+        if not self.session_tree.exists(key):
+            self.session_tree.insert("", "end", iid=key, text=os.path.basename(key), values=("Active", count))
+        else:
+            self.session_tree.item(key, values=("Active", count))
+
         self.session_tree.selection_set(key)
         self.update_status_label()
 
@@ -831,7 +891,7 @@ class ModernUI(ctk.CTk):
 
         except queue.Empty:
             pass
-        self.after(50, self.check_message_queue)
+        self.after(20, self.check_message_queue)
 
     def on_close(self):
         if self.active_sessions:
