@@ -7,6 +7,6 @@ save_by_date: True
 save_mode: docx
 log_title: True
 append_num: True
-auto_copy: False
-copy_files: False
-copy_image: False
+auto_copy: True
+copy_files: True
+copy_image: True

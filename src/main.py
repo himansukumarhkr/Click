@@ -15,6 +15,7 @@ from typing import Dict, Optional
 # Add project root to sys.path to allow imports from src
 import sys
 import os
+import ctypes
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(current_dir)
@@ -273,6 +274,10 @@ class ModernUI(ctk.CTk):
                                                                                                    pady=(0, 15),
                                                                                                    sticky="w")
         path_frame = ctk.CTkFrame(self.config_card, fg_color="transparent")
+        self.btn_select_file = ctk.CTkButton(path_frame, text="Select File", width=80, fg_color="#444",
+                                             hover_color="#555", command=self.select_existing_word_file,
+                                             text_color="white")
+        self.btn_select_file.pack(side="right", padx=(5, 0))
         path_frame.grid(row=1, column=1, padx=(0, 20), pady=(0, 15), sticky="ew")
 
         self.entry_path = ctk.CTkEntry(path_frame, border_width=0, fg_color=self.colors["input_bg"],
@@ -534,6 +539,25 @@ class ModernUI(ctk.CTk):
             if self.var_save_date.get():
                 self.update_path_preview()
 
+    def select_existing_word_file(self):
+        file_path = filedialog.askopenfilename(title="Select Word Document to Append",
+                                               filetypes=[("Word documents", "*.docx")])
+        if file_path:
+            size_bytes = os.path.getsize(file_path)
+            size_str = f"{size_bytes / 1024:.2f} KB" if size_bytes < 1048576 else f"{size_bytes / 1048576:.2f} MB"
+            doc = Document(file_path)
+            img_count = len(doc.inline_shapes)
+            self.entry_path.delete(0, "end")
+            self.entry_path.insert(0, os.path.dirname(file_path))
+            name_only = os.path.basename(file_path).replace(".docx", "")
+            self.entry_name.delete(0, "end")
+            self.entry_name.insert(0, name_only)
+            self.combo_mode.set("Word Document")
+            self.status_label.configure(text=f"Resuming: {img_count} images found ({size_str})",
+                                        text_color=self.colors["accent"])
+            self.app_config["target_file"] = file_path
+            self.app_config["start_count"] = img_count
+
     def load_defaults(self):
         config = self.app_config
         default_dir = os.path.join(os.path.expanduser("~"), "Desktop", "Evidence")
@@ -617,6 +641,8 @@ class ModernUI(ctk.CTk):
             "filename": raw_name,
             "save_dir": final_dir,
             "save_mode": "folder" if is_folder_mode else "docx",
+            "target_file": self.app_config.get("target_file"),
+            "start_count": self.app_config.get("start_count", 0),
             "log_title": self.var_log_title.get(),
             "append_num": self.var_append_num.get(),
             "auto_copy": self.var_auto_copy.get(),
@@ -626,6 +652,8 @@ class ModernUI(ctk.CTk):
         }
 
         session = ScreenshotSession(config, self.gui_queue)
+        self.app_config["target_file"] = None
+        self.app_config["start_count"] = 0
 
         if self.current_session_key:
             self.pause_session(self.current_session_key)
@@ -845,6 +873,8 @@ class ModernUI(ctk.CTk):
             session.cleanup()
 
         self.destroy()
+
+
 
 
 if __name__ == "__main__":

@@ -73,13 +73,23 @@ class ScreenshotSession:
             self.base_filename = os.path.basename(self.current_filepath)
             if not os.path.exists(self.current_filepath):
                 os.makedirs(self.current_filepath)
-        else:
-            self.current_filepath, self.base_filename = self._get_unique_file(save_dir, filename_input)
-            self.document = Document()
-            try:
-                self.document.save(self.current_filepath)
-            except OSError:
-                pass
+            else:
+                target_file = self.config.get('target_file')
+                start_count = self.config.get('start_count', 0)
+
+                if target_file and os.path.exists(target_file):
+                    self.current_filepath = target_file
+                    self.base_filename = os.path.basename(target_file).replace(".docx", "")
+                    self.document = Document(target_file)
+                    self.screenshot_count = start_count
+                    self.last_size_str = self._get_file_size(target_file)
+                else:
+                    self.current_filepath, self.base_filename = self._get_unique_file(save_dir, filename_input)
+                    self.document = Document()
+                    try:
+                        self.document.save(self.current_filepath)
+                    except OSError:
+                        pass
 
         try:
             self.max_size_bytes = int(float(self.config['max_size']) * 1024 * 1024)
@@ -407,7 +417,7 @@ class ScreenshotSession:
                     with self.save_lock:
                         if not os.path.exists(save_path):
                             image_data.convert("RGB").save(save_path, "JPEG", quality=90)
-                            time.sleep(0.05)  # Ensure file system is ready
+                            time.sleep(1)
 
                 # Copy to clipboard (using the cumulative list 'clipboard_files')
                 self.copy_to_clipboard(image_data, clipboard_files)
@@ -526,6 +536,13 @@ class ScreenshotSession:
         if self.document:
             try:
                 self.document.save(self.current_filepath)
+                # VDI Fix: Explicitly release the file handle
+                self.document = None
+                time.sleep(0.5)
+                # Re-initialize so the session can continue capturing
+                from docx import Document
+                self.document = Document(self.current_filepath)
             except OSError:
                 pass
-        self.copy_to_clipboard(None, [os.path.abspath(self.current_filepath)])
+        abs_path = os.path.abspath(self.current_filepath)
+        self.copy_to_clipboard(None, [abs_path])
