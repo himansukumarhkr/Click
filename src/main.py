@@ -11,6 +11,7 @@ import re
 import sys
 import json
 from typing import Dict, Optional
+import ctypes
 
 # Add project root to sys.path to allow imports from src
 import sys
