@@ -11,8 +11,8 @@ import re
 import sys
 import json
 from typing import Dict, Optional
+from docx import Document
 
-# Add project root to sys.path to allow imports from src
 import sys
 import os
 import ctypes
@@ -543,20 +543,42 @@ class ModernUI(ctk.CTk):
         file_path = filedialog.askopenfilename(title="Select Word Document to Append",
                                                filetypes=[("Word documents", "*.docx")])
         if file_path:
+            from docx import Document
             size_bytes = os.path.getsize(file_path)
             size_str = f"{size_bytes / 1024:.2f} KB" if size_bytes < 1048576 else f"{size_bytes / 1048576:.2f} MB"
             doc = Document(file_path)
             img_count = len(doc.inline_shapes)
+
+            # If a session for this file already exists, just activate it
+            if file_path in self.active_sessions:
+                self.current_session_key = file_path
+                if not self.session_tree.exists(file_path):
+                    self.session_tree.insert("", "end", iid=file_path, text=os.path.basename(file_path),
+                                             values=("Active", img_count))
+                else:
+                    self.session_tree.item(file_path, values=("Active", img_count))
+                self.session_tree.selection_set(file_path)
+                self.update_status_label()
+                self.status_label.configure(text=f"Resumed: {img_count} images ({size_str})",
+                                            text_color=self.colors["accent"])
+                return
+
             self.entry_path.delete(0, "end")
             self.entry_path.insert(0, os.path.dirname(file_path))
             name_only = os.path.basename(file_path).replace(".docx", "")
             self.entry_name.delete(0, "end")
             self.entry_name.insert(0, name_only)
             self.combo_mode.set("Word Document")
-            self.status_label.configure(text=f"Resuming: {img_count} images found ({size_str})",
+
+            self.status_label.configure(text=f"Ready to Resume: {img_count} images ({size_str})",
                                         text_color=self.colors["accent"])
+
+            # This is the critical hand-off data
             self.app_config["target_file"] = file_path
             self.app_config["start_count"] = img_count
+
+            # Automatically start the session for the selected file
+            self.start_new_session()
 
     def load_defaults(self):
         config = self.app_config
@@ -637,12 +659,16 @@ class ModernUI(ctk.CTk):
         self.btn_split.configure(state='disabled' if is_folder_mode else 'normal', text_color=self.colors["btn_text"])
         self.btn_copy_all.configure(state='normal', text_color=self.colors["btn_text"])
 
+        # Create config and pull resume data if it exists
+        target = self.app_config.get("target_file")
+        count = self.app_config.get("start_count", 0)
+
         config = {
             "filename": raw_name,
             "save_dir": final_dir,
             "save_mode": "folder" if is_folder_mode else "docx",
-            "target_file": self.app_config.get("target_file"),
-            "start_count": self.app_config.get("start_count", 0),
+            "target_file": target,
+            "start_count": count,
             "log_title": self.var_log_title.get(),
             "append_num": self.var_append_num.get(),
             "auto_copy": self.var_auto_copy.get(),
@@ -652,6 +678,8 @@ class ModernUI(ctk.CTk):
         }
 
         session = ScreenshotSession(config, self.gui_queue)
+
+        # Clear the temporary resume data so it doesn't affect future sessions
         self.app_config["target_file"] = None
         self.app_config["start_count"] = 0
 
@@ -662,7 +690,12 @@ class ModernUI(ctk.CTk):
         self.active_sessions[key] = session
         self.current_session_key = key
 
-        self.session_tree.insert("", "end", iid=key, text=os.path.basename(key), values=("Active", "0"))
+        # Update Treeview with the actual resume count
+        if not self.session_tree.exists(key):
+            self.session_tree.insert("", "end", iid=key, text=os.path.basename(key), values=("Active", count))
+        else:
+            self.session_tree.item(key, values=("Active", count))
+
         self.session_tree.selection_set(key)
         self.update_status_label()
 
@@ -858,7 +891,7 @@ class ModernUI(ctk.CTk):
 
         except queue.Empty:
             pass
-        self.after(50, self.check_message_queue)
+        self.after(20, self.check_message_queue)
 
     def on_close(self):
         if self.active_sessions:
@@ -873,8 +906,6 @@ class ModernUI(ctk.CTk):
             session.cleanup()
 
         self.destroy()
-
-
 
 
 if __name__ == "__main__":

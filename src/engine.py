@@ -47,6 +47,11 @@ class ScreenshotSession:
 
         self.warning_shown = False
         self.last_size_str = "0 KB"
+        self.resume_mode = False
+        self.created_docs = set()
+        self.initial_doc_set = set()
+        self.root_name = ""
+        self.initial_target_file = None
 
         self._initialize_session()
         self.session_id = self.current_filepath
@@ -73,23 +78,53 @@ class ScreenshotSession:
             self.base_filename = os.path.basename(self.current_filepath)
             if not os.path.exists(self.current_filepath):
                 os.makedirs(self.current_filepath)
-            else:
-                target_file = self.config.get('target_file')
-                start_count = self.config.get('start_count', 0)
+        else:
+            target_file = self.config.get('target_file')
+            start_count = self.config.get('start_count', None)
 
-                if target_file and os.path.exists(target_file):
-                    self.current_filepath = target_file
-                    self.base_filename = os.path.basename(target_file).replace(".docx", "")
+            if target_file and os.path.exists(target_file):
+                self.current_filepath = target_file
+                try:
                     self.document = Document(target_file)
-                    self.screenshot_count = start_count
-                    self.last_size_str = self._get_file_size(target_file)
-                else:
-                    self.current_filepath, self.base_filename = self._get_unique_file(save_dir, filename_input)
+                except Exception:
                     self.document = Document()
-                    try:
-                        self.document.save(self.current_filepath)
-                    except OSError:
-                        pass
+                # Initialize count and size from the existing doc
+                try:
+                    if start_count is not None:
+                        self.screenshot_count = int(start_count)
+                    else:
+                        self.screenshot_count = len(self.document.inline_shapes)
+                except Exception:
+                    self.screenshot_count = 0
+                self.last_size_str = self._get_file_size(target_file)
+
+                # Mark as resume mode and snapshot existing parts
+                self.resume_mode = True
+                self.initial_target_file = target_file
+                directory = os.path.dirname(target_file)
+                base = os.path.basename(target_file)
+                m = re.search(r"^(.*)_Part\d+\.docx$", base)
+                if m:
+                    self.root_name = m.group(1)
+                else:
+                    self.root_name = base.rsplit('.', 1)[0]
+
+                if os.path.exists(directory):
+                    for f in os.listdir(directory):
+                        if (f == f"{self.root_name}.docx") or (f.startswith(f"{self.root_name}_Part") and f.endswith(".docx")):
+                            self.initial_doc_set.add(os.path.join(directory, f))
+
+                self.created_docs = set()
+            else:
+                self.current_filepath, self.root_name = self._get_unique_file(save_dir, filename_input)
+                self.document = Document()
+                try:
+                    self.document.save(self.current_filepath)
+                except OSError:
+                    pass
+                # New session owns this document
+                self.resume_mode = False
+                self.created_docs = {self.current_filepath}
 
         try:
             self.max_size_bytes = int(float(self.config['max_size']) * 1024 * 1024)
@@ -145,7 +180,7 @@ class ScreenshotSession:
         self.screenshot_count += 1
         window_title = self._get_active_window_title() if self.config['log_title'] else None
 
-        self.gui_queue.put(("NOTIFY", self.session_id, self.screenshot_count, self.last_size_str))
+        # Do not emit a pre-save notification; we will notify after save completes with exact size
 
         if self.config['auto_copy']:
             if self.config['save_mode'] == "folder":
@@ -205,7 +240,7 @@ class ScreenshotSession:
 
             with self.save_lock:
                 if not os.path.exists(image_path):
-                    image.save(image_path, "JPEG", quality=90)
+                    image.save(image_path, "JPEG", quality=90, subsampling=0)
 
             self.captured_images.append(image_path)
 
@@ -246,8 +281,8 @@ class ScreenshotSession:
                         self.warning_shown = True
                     self.last_size_str = "File Locked"
 
-            # Use session_id for UI updates to ensure the main thread can find the correct session
-            self.gui_queue.put(("UPDATE_SESSION", self.session_id, self.screenshot_count, self.last_size_str))
+            # Single accurate post-save notification
+            self.gui_queue.put(("NOTIFY", self.session_id, self.screenshot_count, self.last_size_str))
         except Exception as e:
             print(f"Save Error: {e}")
 
@@ -302,33 +337,39 @@ class ScreenshotSession:
                     if os.path.exists(self.current_filepath):
                         shutil.rmtree(self.current_filepath)
                 else:
-                    # Delete all split parts
-                    directory = os.path.dirname(self.current_filepath)
-                    base = os.path.basename(self.current_filepath)
-
-                    # Try to find the root name (e.g., Session from Session_Part2.docx)
-                    match = re.search(r"^(.*)_Part\d+\.docx$", base)
-                    if match:
-                        root_name = match.group(1)
-                    else:
-                        root_name = base.rsplit('.', 1)[0]
-
-                    # Delete the base file if it exists (e.g. Session.docx)
-                    base_path = os.path.join(directory, f"{root_name}.docx")
-                    if os.path.exists(base_path):
-                        try:
-                            os.remove(base_path)
-                        except OSError:
-                            pass
-
-                    # Delete all parts (Session_Part1.docx, Session_Part2.docx, ...)
-                    if os.path.exists(directory):
-                        for file in os.listdir(directory):
-                            if file.startswith(f"{root_name}_Part") and file.endswith(".docx"):
+                    if self.resume_mode:
+                        # Delete the initially selected target file (user intent to discard this session)
+                        if self.initial_target_file and os.path.exists(self.initial_target_file):
+                            try:
+                                os.remove(self.initial_target_file)
+                            except OSError:
+                                pass
+                        # Also delete documents created during this session (rotations, etc.)
+                        for p in list(self.created_docs):
+                            if os.path.exists(p) and p != self.initial_target_file and p not in self.initial_doc_set:
                                 try:
-                                    os.remove(os.path.join(directory, file))
+                                    os.remove(p)
                                 except OSError:
                                     pass
+                    else:
+                        # New session: delete all split parts for this root
+                        directory = os.path.dirname(self.current_filepath)
+                        root_name = self.root_name or os.path.basename(self.current_filepath).rsplit('.', 1)[0]
+
+                        base_path = os.path.join(directory, f"{root_name}.docx")
+                        if os.path.exists(base_path):
+                            try:
+                                os.remove(base_path)
+                            except OSError:
+                                pass
+
+                        if os.path.exists(directory):
+                            for file in os.listdir(directory):
+                                if file.startswith(f"{root_name}_Part") and file.endswith(".docx"):
+                                    try:
+                                        os.remove(os.path.join(directory, file))
+                                    except OSError:
+                                        pass
             except OSError:
                 pass
 
@@ -373,6 +414,11 @@ class ScreenshotSession:
         self.document.save(self.current_filepath)
         self.last_size_str = "0 KB"
         self.gui_queue.put(("UPDATE_FILENAME", self.session_id, self.current_filepath))
+        # Track newly created rotated document
+        try:
+            self.created_docs.add(self.current_filepath)
+        except Exception:
+            pass
 
     def _get_active_window_title(self):
         try:
@@ -395,6 +441,12 @@ class ScreenshotSession:
         total = sum(os.path.getsize(os.path.join(r, f)) for r, _, fs in os.walk(path) for f in fs)
         return f"{total / 1024:.2f} KB" if total < 1048576 else f"{total / 1048576:.2f} MB"
 
+    def _get_folder_size_bytes(self, path):
+        return sum(os.path.getsize(os.path.join(r, f)) for r, _, fs in os.walk(path) for f in fs)
+
+    def _format_size(self, size):
+        return f"{size / 1024:.2f} KB" if size < 1048576 else f"{size / 1048576:.2f} MB"
+
     def _clipboard_worker(self):
         while True:
             try:
@@ -416,8 +468,8 @@ class ScreenshotSession:
                 if image_data:
                     with self.save_lock:
                         if not os.path.exists(save_path):
-                            image_data.convert("RGB").save(save_path, "JPEG", quality=90)
-                            time.sleep(1)
+                            image_data.convert("RGB").save(save_path, "JPEG", quality=90, subsampling=0)
+                            time.sleep(0.05)
 
                 # Copy to clipboard (using the cumulative list 'clipboard_files')
                 self.copy_to_clipboard(image_data, clipboard_files)
