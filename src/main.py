@@ -274,33 +274,34 @@ class ModernUI(ctk.CTk):
                                                                                                    pady=(0, 15),
                                                                                                    sticky="w")
         path_frame = ctk.CTkFrame(self.config_card, fg_color="transparent")
-        self.btn_select_file = ctk.CTkButton(path_frame, text="Select File", width=80, fg_color="#444",
-                                             hover_color="#555", command=self.select_existing_word_file,
-                                             text_color="white")
-        self.btn_select_file.pack(side="right", padx=(5, 0))
         path_frame.grid(row=1, column=1, padx=(0, 20), pady=(0, 15), sticky="ew")
 
         self.entry_path = ctk.CTkEntry(path_frame, border_width=0, fg_color=self.colors["input_bg"],
                                        text_color=self.colors["text"])
         self.entry_path.pack(side="left", fill="x", expand=True, padx=(0, 10))
 
-        self.btn_open_folder = ctk.CTkButton(path_frame, text="Open", width=40, fg_color="#444", hover_color="#555",
+        action_frame = ctk.CTkFrame(self.config_card, fg_color="transparent")
+        action_frame.grid(row=2, column=1, padx=(0, 20), pady=(0, 15), sticky="ew")
+        ctk.CTkButton(action_frame, text="Select Directory", width=40, fg_color="#444", hover_color="#555",
+                      command=self.browse_folder, text_color="white").pack(side="right", padx=(5, 0))
+        self.btn_open_folder = ctk.CTkButton(action_frame, text="Open", width=60, fg_color="#444", hover_color="#555",
                                              command=self.open_current_folder, text_color="white")
         self.btn_open_folder.pack(side="right", padx=(5, 0))
+        self.btn_select_file = ctk.CTkButton(action_frame, text="Select File", width=120, fg_color="#444",
+                                             hover_color="#555", command=self.select_existing_word_file,
+                                             text_color="white")
+        self.btn_select_file.pack(side="right", padx=(5, 0))
 
-        ctk.CTkButton(path_frame, text="...", width=40, fg_color="#444", hover_color="#555",
-                      command=self.browse_folder, text_color="white").pack(side="right")
-
-        ctk.CTkLabel(self.config_card, text="Mode", text_color=self.colors["text_secondary"]).grid(row=2, column=0,
+        ctk.CTkLabel(self.config_card, text="Mode", text_color=self.colors["text_secondary"]).grid(row=3, column=0,
                                                                                                    padx=20,
                                                                                                    pady=(0, 15),
                                                                                                    sticky="w")
         self.combo_mode = ctk.CTkComboBox(self.config_card, values=["Word Document", "Folder"], border_width=0,
                                           button_color="#444", text_color=self.colors["text"],
                                           fg_color=self.colors["input_bg"])
-        self.combo_mode.grid(row=2, column=1, padx=(0, 20), pady=(0, 15), sticky="ew")
+        self.combo_mode.grid(row=3, column=1, padx=(0, 20), pady=(0, 15), sticky="ew")
 
-        ctk.CTkLabel(self.config_card, text="Max Size (MB)", text_color=self.colors["text_secondary"]).grid(row=3,
+        ctk.CTkLabel(self.config_card, text="Max Size (MB)", text_color=self.colors["text_secondary"]).grid(row=4,
                                                                                                             column=0,
                                                                                                             padx=20,
                                                                                                             pady=(0,
@@ -308,7 +309,7 @@ class ModernUI(ctk.CTk):
                                                                                                             sticky="w")
         self.entry_size = ctk.CTkEntry(self.config_card, placeholder_text="0 = Unlimited", border_width=0,
                                        fg_color=self.colors["input_bg"], text_color=self.colors["text"])
-        self.entry_size.grid(row=3, column=1, padx=(0, 20), pady=(0, 15), sticky="ew")
+        self.entry_size.grid(row=4, column=1, padx=(0, 20), pady=(0, 15), sticky="ew")
         self.entry_size.insert(0, "0")
 
         # Options Card
@@ -510,7 +511,16 @@ class ModernUI(ctk.CTk):
             self.var_auto_copy.set(False)
 
     def update_path_preview(self):
-        self.start_new_session(dry_run=True)
+        if self.var_save_date.get():
+            self.start_new_session(dry_run=True)
+        else:
+            current = self.entry_path.get().strip()
+            match = re.search(r'(.*?)(\\|/)?(\d{2}-\d{2}-\d{4})$', current)
+            if match:
+                prefix = match.group(1).rstrip("\\/")
+                new_path = os.path.normpath(prefix) if prefix else current
+                self.entry_path.delete(0, "end")
+                self.entry_path.insert(0, new_path)
 
     def on_hotkey_error(self, key_name):
         self.gui_queue.put(("HOTKEY_FAIL", key_name))
@@ -535,7 +545,7 @@ class ModernUI(ctk.CTk):
         directory = filedialog.askdirectory()
         if directory:
             self.entry_path.delete(0, "end")
-            self.entry_path.insert(0, directory)
+            self.entry_path.insert(0, os.path.normpath(directory))
             if self.var_save_date.get():
                 self.update_path_preview()
 
@@ -564,7 +574,7 @@ class ModernUI(ctk.CTk):
                 return
 
             self.entry_path.delete(0, "end")
-            self.entry_path.insert(0, os.path.dirname(file_path))
+            self.entry_path.insert(0, os.path.normpath(os.path.dirname(file_path)))
             name_only = os.path.basename(file_path).replace(".docx", "")
             self.entry_name.delete(0, "end")
             self.entry_name.insert(0, name_only)
@@ -584,7 +594,7 @@ class ModernUI(ctk.CTk):
         config = self.app_config
         default_dir = os.path.join(os.path.expanduser("~"), "Desktop", "Evidence")
 
-        self.entry_path.insert(0, config.get('save_dir', default_dir))
+        self.entry_path.insert(0, os.path.normpath(config.get('save_dir', default_dir)))
 
         filename = config.get('filename', 'screenshot')
         self.entry_name.delete(0, "end")
@@ -649,11 +659,11 @@ class ModernUI(ctk.CTk):
 
         if dry_run:
             self.entry_path.delete(0, "end")
-            self.entry_path.insert(0, final_dir)
+            self.entry_path.insert(0, os.path.normpath(final_dir))
             return
 
         self.entry_path.delete(0, "end")
-        self.entry_path.insert(0, final_dir)
+        self.entry_path.insert(0, os.path.normpath(final_dir))
 
         is_folder_mode = self.combo_mode.get() == "Folder"
         self.btn_split.configure(state='disabled' if is_folder_mode else 'normal', text_color=self.colors["btn_text"])
@@ -767,9 +777,10 @@ class ModernUI(ctk.CTk):
         if not self.active_sessions:
             self.btn_copy_file.configure(state="disabled")
             if self.backup_path:
-                self.entry_path.delete(0, "end")
-                self.entry_path.insert(0, self.backup_path)
-                self.backup_path = None
+                if not self.var_save_date.get():
+                    self.entry_path.delete(0, "end")
+                    self.entry_path.insert(0, os.path.normpath(self.backup_path))
+                    self.backup_path = None
 
     def on_session_select(self, event):
         selection = self.session_tree.selection()
