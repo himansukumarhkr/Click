@@ -349,6 +349,9 @@ class ModernUI(ctk.CTk):
                         command=self.validate_clipboard_options,
                         text_color=self.colors["text"]).grid(row=3, column=2, padx=20, pady=10, sticky="w")
 
+        ctk.CTkFrame(self.options_card, height=1, fg_color="gray25").grid(row=4, column=0, columnspan=3, sticky="ew",
+                                                                          padx=10, pady=(5, 0))
+
         # Action Buttons
         self.btn_start = ctk.CTkButton(content_parent, text="START SESSION", height=50, corner_radius=25,
                                        font=ctk.CTkFont(size=16, weight="bold"), command=self.start_new_session,
@@ -372,7 +375,7 @@ class ModernUI(ctk.CTk):
         self.status_label = ctk.CTkLabel(content_parent, text="Ready to capture",
                                          text_color=self.colors["text_secondary"])
         self.status_label.grid(row=6, column=0, pady=(20, 0))
-        ctk.CTkLabel(content_parent, text="~ (Capture)    |    Ctrl+Alt+~ (Undo)",
+        ctk.CTkLabel(content_parent, text="~ (Capture)    |    Ctrl+Alt+~ (Undo)    |    Ctrl+~ (Prepend Selection)",
                      text_color=self.colors["text_secondary"],
                      font=ctk.CTkFont(size=11)).grid(row=7, column=0)
 
@@ -390,13 +393,22 @@ class ModernUI(ctk.CTk):
                                         text_color=self.colors["text"])
         self.notif_label.pack(expand=True, padx=20, pady=10)
 
+        footer_text = "- developed by Himansu Kumar\nFor any issues reach out to himansukumar@himansukumar.com"
+        self.footer_label = ctk.CTkLabel(self, text=footer_text,
+                                         justify="right",
+                                         anchor="e",
+                                         text_color=self.colors["text_secondary"],
+                                         font=ctk.CTkFont(size=10))
+        self.footer_label.place(relx=1.0, rely=1.0, anchor="se", x=-10, y=-10)
+
         # Initialization
         self.load_defaults()
         self.icon_path = get_resource_path("assets/app_icon.ico")
         self._apply_window_icon()
         self.after(200, self._apply_window_icon)
 
-        self.hotkey_manager = HotkeyListener(self.on_hotkey_capture, self.on_hotkey_undo, self.on_hotkey_error)
+        self.hotkey_manager = HotkeyListener(self.on_hotkey_capture, self.on_hotkey_undo, self.on_hotkey_prepend,
+                                             self.on_hotkey_error)
         self.hotkey_manager.start()
 
         self.check_message_queue()
@@ -743,7 +755,7 @@ class ModernUI(ctk.CTk):
         if selection and selection[0] in self.active_sessions:
             threading.Thread(target=self.active_sessions[selection[0]].copy_master_file_to_clipboard,
                              daemon=True).start()
-            self.show_notification("Copied File", "Session File Copied")
+            self.show_notification("Copied!", "")
 
     def open_current_folder(self):
         path = self.entry_path.get()
@@ -823,6 +835,10 @@ class ModernUI(ctk.CTk):
         if self.current_session_key:
             self.active_sessions[self.current_session_key].undo()
 
+    def on_hotkey_prepend(self):
+        if self.current_session_key:
+            self.active_sessions[self.current_session_key].prepend_selection()
+
     def split_file(self):
         if self.current_session_key:
             self.active_sessions[self.current_session_key].manual_rotate()
@@ -874,8 +890,8 @@ class ModernUI(ctk.CTk):
                     self.status_label.configure(text=f"Copying to Clipboard... ({msg[1]}/{msg[2]})",
                                                 text_color="orange")
                     if msg[1] == msg[2]:
-                        self.show_notification("Copy Complete", f"Copied {msg[2]} items to clipboard")
-                        self.update_status_label()  # Restore default status
+                        self.show_notification("Copied!", "")
+                        self.update_status_label()
 
                 elif action == "UPDATE_FILENAME":
                     # msg[1] = session_id, msg[2] = new_filepath
@@ -899,6 +915,14 @@ class ModernUI(ctk.CTk):
                             if session_key == self.current_session_key:
                                 self.status_label.configure(text=f"Switched to Part {part_num}",
                                                             text_color=self.colors["accent"])
+
+                elif action == "COPIED":
+                    self.show_notification("Copied!", "")
+                elif action == "COPY_FILES_NOT_SUPPORTED":
+                    self.show_notification("Files cannot be copied", "Only text can be copied")
+                elif action == "CLIPBOARD_ERROR":
+                    messagebox.showerror("Clipboard Error",
+                                         "Could not access the clipboard.\nPlease close other apps that might be locking it and try again.")
 
         except queue.Empty:
             pass

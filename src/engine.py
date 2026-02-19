@@ -7,6 +7,8 @@ import queue
 import time
 import io
 import re
+import uuid
+import zipfile
 from typing import Optional, List, Dict
 
 from PIL import Image, ImageGrab
@@ -598,3 +600,100 @@ class ScreenshotSession:
                 pass
         abs_path = os.path.abspath(self.current_filepath)
         self.copy_to_clipboard(None, [abs_path])
+
+    def prepend_selection(self):
+        try:
+            user32.keybd_event(0x11, 0, 0, 0)
+            user32.keybd_event(0x43, 0, 0, 0)
+            time.sleep(0.05)
+            user32.keybd_event(0x43, 0, win32con.KEYEVENTF_KEYUP, 0)
+            user32.keybd_event(0x11, 0, win32con.KEYEVENTF_KEYUP, 0)
+            time.sleep(0.15)
+        except Exception:
+            pass
+        text = None
+        file_paths = None
+        try:
+            win32clipboard.OpenClipboard()
+            try:
+                if win32clipboard.IsClipboardFormatAvailable(win32con.CF_HDROP):
+                    try:
+                        file_paths = list(win32clipboard.GetClipboardData(win32con.CF_HDROP))
+                    except Exception:
+                        file_paths = None
+                if not file_paths:
+                    if win32clipboard.IsClipboardFormatAvailable(win32clipboard.CF_UNICODETEXT):
+                        text = win32clipboard.GetClipboardData(win32clipboard.CF_UNICODETEXT)
+                    elif win32clipboard.IsClipboardFormatAvailable(win32clipboard.CF_TEXT):
+                        raw = win32clipboard.GetClipboardData(win32clipboard.CF_TEXT)
+                        try:
+                            text = raw.decode("utf-8", errors="ignore")
+                        except AttributeError:
+                            text = raw
+            finally:
+                try:
+                    win32clipboard.CloseClipboard()
+                except Exception:
+                    pass
+        except Exception:
+            self.gui_queue.put(("CLIPBOARD_ERROR",))
+            return
+
+        save_mode = self.config.get("save_mode", "docx")
+
+        if file_paths and not text:
+            if save_mode == "folder":
+                for src in file_paths:
+                    if not os.path.exists(src):
+                        continue
+                    name = os.path.basename(src)
+                    target = os.path.join(self.current_filepath, name)
+                    base, ext = os.path.splitext(target)
+                    n = 1
+                    while os.path.exists(target):
+                        target = f"{base}_{n}{ext}"
+                        n += 1
+                    try:
+                        shutil.copyfile(src, target)
+                    except Exception:
+                        continue
+                self.gui_queue.put(("COPIED",))
+            else:
+                self.gui_queue.put(("COPY_FILES_NOT_SUPPORTED",))
+            return
+
+        if not text:
+            return
+
+        if save_mode == "folder":
+            save_path = os.path.join(self.current_filepath, "notes.txt")
+            prefix = ""
+            if os.path.exists(save_path):
+                try:
+                    with open(save_path, "r", encoding="utf-8", errors="ignore") as f:
+                        prefix = f.read()
+                except Exception:
+                    prefix = ""
+            try:
+                with open(save_path, "w", encoding="utf-8") as f:
+                    f.write(str(text) + ("\n" + prefix if prefix else ""))
+            except Exception:
+                pass
+            self.gui_queue.put(("COPIED",))
+            return
+
+        if text:
+            if not self.document:
+                try:
+                    self.document = Document(self.current_filepath)
+                except Exception:
+                    self.document = Document()
+            try:
+                body = self.document._body._element
+                p = self.document.add_paragraph(str(text))
+                body.insert(0, p._element)
+                self.document.save(self.current_filepath)
+                self.last_size_str = self._get_file_size(self.current_filepath)
+                self.gui_queue.put(("COPIED",))
+            except Exception:
+                pass
