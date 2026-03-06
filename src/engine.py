@@ -260,7 +260,7 @@ class ScreenshotSession:
 
                 caption = ""
                 if window_title and self.config['append_num']:
-                    caption = f"{window_title} {count}"
+                    caption = f"{count} | {window_title}"
                 elif window_title:
                     caption = window_title
                 elif self.config['append_num']:
